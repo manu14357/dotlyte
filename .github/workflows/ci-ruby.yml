@@ -29,6 +29,8 @@ jobs:
           ruby-version: ${{ matrix.ruby-version }}
           bundler-cache: true
           working-directory: langs/ruby
+      - name: Install dependencies
+        run: bundle install --jobs 4 --retry 3
       - name: Lint
         run: bundle exec rubocop
       - name: Test
