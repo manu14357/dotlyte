@@ -1,0 +1,66 @@
+{
+  "name": "dotlyte",
+  "version": "0.1.0",
+  "description": "The universal .env and configuration library. One API for every language.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ tests/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "dotenv",
+    "config",
+    "configuration",
+    "env",
+    "environment",
+    "yaml",
+    "toml"
+  ],
+  "author": "DOTLYTE Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dotlyte-io/dotlyte",
+    "directory": "langs/javascript"
+  },
+  "homepage": "https://dotlyte.dev",
+  "bugs": {
+    "url": "https://github.com/dotlyte-io/dotlyte/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.0.2",
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^3.0.0"
+  }
+}

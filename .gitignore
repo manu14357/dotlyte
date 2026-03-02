@@ -1,0 +1,70 @@
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg
+.coverage
+htmlcov/
+
+# === JavaScript / TypeScript ===
+node_modules/
+*.tsbuildinfo
+coverage/
+
+# === Go ===
+*.test
+*.out
+
+# === Rust ===
+langs/rust/target/
+**/*.rs.bk
+
+# === Java ===
+langs/java/target/
+langs/java/.gradle/
+langs/java/build/
+*.class
+*.jar
+*.war
+
+# === Ruby ===
+*.gem
+.bundle/
+vendor/bundle/
+Gemfile.lock
+
+# === PHP ===
+langs/php/vendor/
+composer.lock
+
+# === .NET ===
+langs/dotnet/**/bin/
+langs/dotnet/**/obj/
+*.nupkg
+*.user
+
+# === Environment files ===
+.env
+.env.local
+.env.*.local
+!spec/fixtures/**/.env
+
+# === OS ===
+*.log
+*.tmp

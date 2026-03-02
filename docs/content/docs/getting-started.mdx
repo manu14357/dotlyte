@@ -1,0 +1,117 @@
+---
+title: Getting Started
+description: Set up DOTLYTE in your project in under 2 minutes.
+icon: Rocket
+---
+
+## Overview
+
+DOTLYTE is available as a native package in 8 languages. Each implementation is independently versioned and follows the universal specification.
+
+## Choose Your Language
+
+| Language | Package Manager | Install Command |
+|----------|----------------|-----------------|
+| Python | pip | `pip install dotlyte` |
+| JavaScript/TS | npm / pnpm | `pnpm add dotlyte` |
+| Go | go modules | `go get github.com/dotlyte-io/dotlyte/langs/go` |
+| Rust | cargo | `cargo add dotlyte` |
+| Java | Gradle / Maven | `implementation("dev.dotlyte:dotlyte:0.1.0")` |
+| Ruby | gem | `gem install dotlyte` |
+| PHP | composer | `composer require dotlyte/dotlyte` |
+| .NET | NuGet | `dotnet add package Dotlyte` |
+
+## Minimal Example
+
+1. Create a `.env` file in your project root:
+
+```bash title=".env"
+APP_NAME=MyApp
+PORT=3000
+DEBUG=true
+```
+
+2. Load it with one call:
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import load
+
+    config = load()
+    print(config.app_name)  # "MyApp"
+    print(config.port)      # 3000
+    print(config.debug)     # True
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { load } from "dotlyte";
+
+    const config = load();
+    console.log(config.app_name); // "MyApp"
+    console.log(config.port);     // 3000
+    console.log(config.debug);    // true
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    config := dotlyte.Load(nil)
+    fmt.Println(config.Get("app_name", nil)) // MyApp
+    fmt.Println(config.Get("port", nil))     // 3000
+    fmt.Println(config.Get("debug", nil))    // true
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    let config = dotlyte::load(None)?;
+    println!("{}", config.require::<String>("app_name")?); // MyApp
+    println!("{}", config.require::<i64>("port")?);        // 3000
+    println!("{}", config.require::<bool>("debug")?);      // true
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    Config config = Dotlyte.load();
+    config.get("app_name"); // "MyApp"
+    config.get("port");     // 3000
+    config.get("debug");    // true
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    require "dotlyte"
+
+    config = Dotlyte.load
+    config.app_name  # "MyApp"
+    config.port      # 3000
+    config.debug     # true
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\Dotlyte;
+
+    $config = Dotlyte::load();
+    $config->get('app_name'); // "MyApp"
+    $config->get('port');     // 3000
+    $config->get('debug');    // true
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    var config = DotlyteLoader.Load();
+    config.Get("app_name"); // "MyApp"
+    config.Get("port");     // 3000
+    config.Get("debug");    // true
+    ```
+  </Tab>
+</Tabs>
+
+That's it. No setup, no configuration files, no ceremony.
+
+## Next Steps
+
+- [Installation](/docs/installation) — detailed installation for each language
+- [Quick Start](/docs/quick-start) — build a real app with DOTLYTE
+- [API Reference](/docs/api/load) — full API docs

@@ -1,0 +1,25 @@
+{
+  "description": "Priority: env vars > .env > config.yaml > defaults. Higher layer wins for each key.",
+  "options": {
+    "defaults": {
+      "port": 1111,
+      "debug": false,
+      "host": "default-host",
+      "fallback_key": "only-in-defaults"
+    }
+  },
+  "env_vars": {
+    "PORT": "7777",
+    "HOST": "envvar-host"
+  },
+  "expected": {
+    "port": 7777,
+    "debug": false,
+    "host": "envvar-host",
+    "fallback_key": "only-in-defaults",
+    "database": {
+      "host": "yaml-db-host",
+      "port": 5432
+    }
+  }
+}

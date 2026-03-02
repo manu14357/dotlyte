@@ -1,0 +1,49 @@
+repos:
+  # General hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+  # Conventional commits
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: ['feat', 'fix', 'docs', 'style', 'refactor', 'perf', 'test', 'ci', 'chore', 'revert']
+
+  # Python — ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^langs/python/
+      - id: ruff-format
+        files: ^langs/python/
+
+  # Local hooks for other languages
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        entry: bash -c 'cd langs/go && gofmt -l -w .'
+        language: system
+        files: ^langs/go/.*\.go$
+        pass_filenames: false
+
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: bash -c 'cd langs/rust && cargo fmt --check'
+        language: system
+        files: ^langs/rust/
+        pass_filenames: false

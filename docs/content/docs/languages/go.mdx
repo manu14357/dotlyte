@@ -1,0 +1,211 @@
+---
+title: Go
+description: Using DOTLYTE with Go — installation, API, and idiomatic patterns.
+icon: Hexagon
+---
+
+## Installation
+
+```bash
+go get github.com/dotlyte/dotlyte-go
+```
+
+### Requirements
+
+- Go **1.21+**
+- No external dependencies
+
+## Quick Start
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/dotlyte/dotlyte-go"
+)
+
+func main() {
+    config := dotlyte.Load(nil)
+
+    host := config.Get("database.host", "localhost")
+    port := config.Get("database.port", "5432")
+
+    fmt.Printf("DB: %s:%s\n", host, port)
+}
+```
+
+## API Reference
+
+### `Load(options *LoadOptions) *Config`
+
+```go
+// Basic
+config := dotlyte.Load(nil)
+
+// With options
+config := dotlyte.Load(&dotlyte.LoadOptions{
+    Files:    []string{".env", "config.yaml"},
+    Prefix:   "APP_",
+    Defaults: map[string]interface{}{"port": 3000},
+    Env:      "production",
+})
+```
+
+### `Config`
+
+#### `Get(key string, defaultValue ...string) string`
+
+```go
+host := config.Get("server.host", "0.0.0.0")
+port := config.Get("server.port")    // "" if missing
+name := config.Get("app.name", "myapp")
+```
+
+#### `Require(key string) (string, error)`
+
+```go
+dbURL, err := config.Require("database_url")
+if err != nil {
+    var dotErr *dotlyte.DotlyteError
+    if errors.As(err, &dotErr) {
+        log.Fatalf("Missing config key: %s", dotErr.Key)
+    }
+}
+```
+
+#### `Has(key string) bool`
+
+```go
+if config.Has("redis.host") {
+    setupRedis(config)
+}
+```
+
+### `LoadOptions`
+
+```go
+type LoadOptions struct {
+    Files    []string               // Explicit config file paths
+    Prefix   string                 // Env var prefix to strip
+    Defaults map[string]interface{} // Default values (lowest priority)
+    Sources  []string               // Custom source order
+    Env      string                 // Environment name
+}
+```
+
+### `DotlyteError`
+
+```go
+type DotlyteError struct {
+    Key     string
+    Message string
+}
+
+func (e *DotlyteError) Error() string {
+    return e.Message
+}
+```
+
+## Patterns
+
+### HTTP Server
+
+```go
+package main
+
+import (
+    "log"
+    "net/http"
+
+    "github.com/dotlyte/dotlyte-go"
+)
+
+func main() {
+    config := dotlyte.Load(&dotlyte.LoadOptions{
+        Prefix: "APP_",
+        Env:    "production",
+    })
+
+    port := config.Get("port", "8080")
+
+    mux := http.NewServeMux()
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte("Hello, DOTLYTE!"))
+    })
+
+    log.Printf("Listening on :%s", port)
+    log.Fatal(http.ListenAndServe(":"+port, mux))
+}
+```
+
+### Gin / Echo / Fiber
+
+```go
+config := dotlyte.Load(&dotlyte.LoadOptions{Prefix: "API_"})
+
+r := gin.Default()
+r.Run(":" + config.Get("port", "8080"))
+```
+
+### Struct Binding
+
+<Callout type="info">
+  DOTLYTE returns string values from `Get()`. Use Go's `strconv` to convert types, or rely on DOTLYTE's type coercion when values come from YAML/JSON sources.
+</Callout>
+
+```go
+import "strconv"
+
+port, _ := strconv.Atoi(config.Get("port", "8080"))
+debug, _ := strconv.ParseBool(config.Get("debug", "false"))
+```
+
+### Testing
+
+```go
+func TestConfig(t *testing.T) {
+    config := dotlyte.Load(&dotlyte.LoadOptions{
+        Defaults: map[string]interface{}{
+            "database.host": "localhost",
+            "database.port": "5432",
+        },
+    })
+
+    if got := config.Get("database.host", ""); got != "localhost" {
+        t.Errorf("expected localhost, got %s", got)
+    }
+}
+```
+
+## Build & Test
+
+```bash
+cd langs/go
+
+# Build
+go build ./...
+
+# Test with race detector
+go test -race ./...
+
+# Lint
+gofmt -l .
+go vet ./...
+```
+
+## Project Structure
+
+```
+langs/go/
+├── dotlyte.go        # Load() function
+├── config.go         # Config type
+├── coercion.go       # Type coercion
+├── errors.go         # DotlyteError
+├── parsers.go        # File parsers (.env, YAML, JSON, TOML)
+├── dotlyte_test.go   # Tests
+├── go.mod
+└── go.sum
+```

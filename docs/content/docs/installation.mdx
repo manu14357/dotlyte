@@ -1,0 +1,189 @@
+---
+title: Installation
+description: Step-by-step installation instructions for all 8 languages.
+icon: Download
+---
+
+## Python
+
+Requires Python 3.9+.
+
+```bash
+pip install dotlyte
+```
+
+Or with optional YAML/TOML support:
+
+```bash
+pip install "dotlyte[yaml,toml]"
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/python
+pip install -e ".[dev]"
+pytest  # run tests
+```
+
+---
+
+## JavaScript / TypeScript
+
+Requires Node.js 18+.
+
+```bash
+# pnpm (recommended)
+pnpm add dotlyte
+
+# npm
+npm install dotlyte
+
+# yarn
+yarn add dotlyte
+```
+
+YAML support is included by default. TypeScript types are bundled.
+
+### Dev Setup (from source)
+
+```bash
+cd langs/javascript
+pnpm install
+pnpm build   # builds ESM + CJS + DTS
+pnpm test    # vitest
+```
+
+---
+
+## Go
+
+Requires Go 1.21+.
+
+```bash
+go get github.com/dotlyte-io/dotlyte/langs/go
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/go
+go test -race ./...
+```
+
+---
+
+## Rust
+
+Requires Rust 2021 edition.
+
+```bash
+cargo add dotlyte
+```
+
+### Cargo.toml
+
+```toml
+[dependencies]
+dotlyte = "0.1.0"
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/rust
+cargo test
+cargo clippy -- -D warnings
+```
+
+---
+
+## Java
+
+Requires Java 17+.
+
+### Gradle (Kotlin DSL)
+
+```kotlin
+dependencies {
+    implementation("dev.dotlyte:dotlyte:0.1.0")
+}
+```
+
+### Maven
+
+```xml
+<dependency>
+    <groupId>dev.dotlyte</groupId>
+    <artifactId>dotlyte</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/java
+./gradlew test
+```
+
+---
+
+## Ruby
+
+Requires Ruby 3.0+.
+
+```bash
+gem install dotlyte
+```
+
+### Gemfile
+
+```ruby
+gem "dotlyte", "~> 0.1.0"
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/ruby
+bundle install
+bundle exec rspec
+```
+
+---
+
+## PHP
+
+Requires PHP 8.1+.
+
+```bash
+composer require dotlyte/dotlyte
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/php
+composer install
+vendor/bin/phpunit
+vendor/bin/phpstan analyse
+```
+
+---
+
+## .NET
+
+Requires .NET 6.0+ or .NET 8.0+.
+
+```bash
+dotnet add package Dotlyte
+```
+
+### Dev Setup (from source)
+
+```bash
+cd langs/dotnet
+dotnet test
+dotnet format --verify-no-changes
+```

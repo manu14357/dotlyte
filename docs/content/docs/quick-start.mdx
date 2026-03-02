@@ -1,0 +1,191 @@
+---
+title: Quick Start
+description: Build a config-powered application in 5 minutes.
+icon: Zap
+---
+
+This guide walks you through building a real application that uses DOTLYTE to manage configuration from multiple sources.
+
+## 1. Create Your Config Files
+
+Let's set up a realistic project with layered configuration:
+
+```bash title=".env"
+PORT=8080
+DEBUG=true
+LOG_LEVEL=info
+```
+
+```yaml title="config.yaml"
+database:
+  host: localhost
+  port: 5432
+  name: myapp_dev
+
+redis:
+  host: localhost
+  port: 6379
+```
+
+```bash title=".env.production"
+PORT=443
+DEBUG=false
+LOG_LEVEL=warn
+DATABASE_HOST=db.production.internal
+```
+
+## 2. Load Everything With One Call
+
+<Tabs items={["Python", "JavaScript", "Go"]}>
+  <Tab value="Python">
+    ```python title="app.py"
+    from dotlyte import load
+
+    # Load all config sources automatically
+    config = load()
+
+    # Dot-notation access
+    print(f"Server running on port {config.port}")
+    print(f"Debug mode: {config.debug}")
+
+    # Nested config from YAML
+    print(f"Database: {config.get('database.host')}:{config.get('database.port')}")
+
+    # Safe access with defaults
+    timeout = config.get("timeout", 30)
+    print(f"Timeout: {timeout}")
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript title="app.ts"
+    import { load } from "dotlyte";
+
+    // Load all config sources automatically
+    const config = load();
+
+    // Dot-notation access
+    console.log(`Server running on port ${config.port}`);
+    console.log(`Debug mode: ${config.debug}`);
+
+    // Nested config from YAML
+    console.log(`Database: ${config.get("database.host")}:${config.get("database.port")}`);
+
+    // Safe access with defaults
+    const timeout = config.get("timeout", 30);
+    console.log(`Timeout: ${timeout}`);
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go title="main.go"
+    package main
+
+    import (
+        "fmt"
+        dotlyte "github.com/dotlyte-io/dotlyte/langs/go"
+    )
+
+    func main() {
+        config := dotlyte.Load(nil)
+
+        fmt.Printf("Server running on port %v\n", config.Get("port", nil))
+        fmt.Printf("Debug mode: %v\n", config.Get("debug", nil))
+        fmt.Printf("Database: %v:%v\n",
+            config.Get("database.host", nil),
+            config.Get("database.port", nil))
+
+        timeout := config.Get("timeout", 30)
+        fmt.Printf("Timeout: %v\n", timeout)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## 3. Use Environment-Specific Config
+
+Load production-specific overrides automatically:
+
+<Tabs items={["Python", "JavaScript"]}>
+  <Tab value="Python">
+    ```python
+    config = load(env="production")
+    # Loads: .env → .env.production → .env.local → config.yaml → config.production.yaml
+    # Production values override base values automatically
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    const config = load({ env: "production" });
+    // Same layered loading with production overrides
+    ```
+  </Tab>
+</Tabs>
+
+## 4. Require Critical Config
+
+Fail fast if required configuration is missing:
+
+<Tabs items={["Python", "JavaScript"]}>
+  <Tab value="Python">
+    ```python
+    # Throws DotlyteError with helpful message if missing
+    db_url = config.require("database_url")
+    secret = config.require("jwt_secret")
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    // Throws DotlyteError with helpful message if missing
+    const dbUrl = config.require("database_url");
+    const secret = config.require("jwt_secret");
+    ```
+  </Tab>
+</Tabs>
+
+## 5. Use Prefix Stripping
+
+Strip prefixes from environment variables for cleaner config:
+
+```bash title=".env"
+APP_DB_HOST=localhost
+APP_DB_PORT=5432
+APP_REDIS_URL=redis://localhost
+```
+
+<Tabs items={["Python", "JavaScript"]}>
+  <Tab value="Python">
+    ```python
+    config = load(prefix="APP")
+
+    config.db_host    # "localhost" (APP_ stripped)
+    config.db_port    # 5432
+    config.redis_url  # "redis://localhost"
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    const config = load({ prefix: "APP" });
+
+    config.db_host;   // "localhost" (APP_ stripped)
+    config.db_port;   // 5432
+    config.redis_url; // "redis://localhost"
+    ```
+  </Tab>
+</Tabs>
+
+## What Just Happened?
+
+DOTLYTE automatically:
+
+1. **Discovered** all config files (`.env`, `config.yaml`, etc.)
+2. **Parsed** each file format natively
+3. **Merged** them with layered priority (env vars win over files)
+4. **Coerced** string values to proper types (`"8080"` → `8080`)
+5. **Returned** a `Config` object with dot-notation access
+
+All with a single `load()` call. No boilerplate, no manual parsing, no type casting.
+
+## Next Steps
+
+- [Priority Order](/docs/priority-order) — understand how layers merge
+- [Type Coercion](/docs/type-coercion) — learn the coercion rules
+- [API Reference](/docs/api/load) — full `load()` documentation

@@ -1,0 +1,34 @@
+{
+  "description": "Basic loading: .env overrides config.yaml/json, with type coercion on .env values",
+  "options": {},
+  "env_vars": {},
+  "expected": {
+    "port": 8080,
+    "debug": true,
+    "host": "localhost",
+    "database_url": "postgres://localhost:5432/mydb",
+    "tags": ["web", "api", "v2"],
+    "secret_key": "my-secret-key-123",
+    "max_retries": 3,
+    "rate_limit": 1.5,
+    "cache_enabled": true,
+    "log_level": "info",
+    "empty_value": null,
+    "null_value": null,
+    "database": {
+      "host": "localhost",
+      "port": 5432,
+      "name": "mydb",
+      "ssl": true
+    },
+    "logging": {
+      "level": "warn",
+      "format": "json"
+    },
+    "app_name": "dotlyte-test",
+    "features": {
+      "notifications": true,
+      "dark_mode": false
+    }
+  }
+}

@@ -1,0 +1,44 @@
+name: CI - JavaScript
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'langs/javascript/**'
+      - 'spec/**'
+  pull_request:
+    paths:
+      - 'langs/javascript/**'
+      - 'spec/**'
+
+defaults:
+  run:
+    working-directory: langs/javascript
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+          cache-dependency-path: langs/javascript/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Type check
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+      - name: Test
+        run: pnpm test

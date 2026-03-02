@@ -1,0 +1,28 @@
+[package]
+name = "dotlyte"
+version = "0.1.0"
+edition = "2021"
+authors = ["DOTLYTE Contributors"]
+description = "The universal .env and configuration library. One API for every language."
+license = "MIT"
+repository = "https://github.com/dotlyte-io/dotlyte/tree/main/langs/rust"
+homepage = "https://dotlyte.dev"
+readme = "README.md"
+keywords = ["dotenv", "config", "configuration", "env", "yaml"]
+categories = ["config"]
+rust-version = "1.70"
+
+[dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = ["yaml", "toml-support"]
+yaml = ["dep:serde_yaml"]
+toml-support = ["dep:toml"]

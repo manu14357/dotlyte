@@ -1,0 +1,139 @@
+---
+title: load()
+description: The main entry point — load configuration from all available sources.
+icon: Play
+---
+
+`load()` is the primary function in DOTLYTE. It discovers, parses, merges, and coerces configuration from all available sources and returns a `Config` object.
+
+## Signature
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    def load(
+        files: list[str] | None = None,
+        prefix: str | None = None,
+        defaults: dict | None = None,
+        sources: list[str] | None = None,
+        env: str | None = None,
+    ) -> Config
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    function load(options?: LoadOptions): Config
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    func Load(opts *LoadOptions) *Config
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    pub fn load(opts: Option<LoadOptions>) -> Result<Config, DotlyteError>
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    public static Config load(LoadOptions options)
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    def self.load(**options) -> Config
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    public static function load(array $options = []): Config
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    public static Config Load(LoadOptions? options = null)
+    ```
+  </Tab>
+</Tabs>
+
+## Parameters
+
+See [LoadOptions](/docs/api/options) for the full options reference.
+
+## Return Value
+
+Returns a [`Config`](/docs/api/config) object with dot-notation access, `get()`, `require()`, and `has()`.
+
+## Basic Usage
+
+```python
+from dotlyte import load
+
+# Load with all defaults
+config = load()
+
+# Load with options
+config = load(
+    env="production",
+    prefix="APP",
+    defaults={"timeout": 30},
+)
+```
+
+## Behavior
+
+When called, `load()` performs these steps in order:
+
+1. **Discover** config files in the current working directory
+2. **Parse** each file using the appropriate parser (dotenv, YAML, JSON, TOML)
+3. **Parse** environment variables (optionally filtered by prefix)
+4. **Merge** all sources by [priority order](/docs/priority-order)
+5. **Coerce** string values to proper types ([type coercion rules](/docs/type-coercion))
+6. **Return** a `Config` object
+
+## Examples
+
+### Minimal
+
+```python
+config = load()
+```
+
+### With Environment
+
+```python
+config = load(env="staging")
+# Loads: config.staging.yaml, .env.staging, etc.
+```
+
+### With Prefix Stripping
+
+```python
+config = load(prefix="MYAPP")
+# MYAPP_DB_HOST → db_host
+```
+
+### With Explicit Defaults
+
+```python
+config = load(defaults={
+    "port": 3000,
+    "host": "0.0.0.0",
+    "database": {"pool_size": 5}
+})
+```
+
+### With Custom Sources
+
+```python
+config = load(sources=["defaults", "dotenv", "env"])
+# Only loads defaults, .env files, and env vars
+# Skips YAML, JSON, TOML
+```
+
+### With Explicit Files
+
+```python
+config = load(files=["config/app.env", "config/secrets.env"])
+```

@@ -1,0 +1,221 @@
+---
+title: Java
+description: Using DOTLYTE with Java — installation, API, and idiomatic patterns.
+icon: Coffee
+---
+
+## Installation
+
+<Tabs items={["Gradle (Kotlin DSL)", "Maven"]}>
+  <Tab value="Gradle (Kotlin DSL)">
+    ```kotlin
+    dependencies {
+        implementation("com.dotlyte:dotlyte:0.1.0")
+    }
+    ```
+  </Tab>
+  <Tab value="Maven">
+    ```xml
+    <dependency>
+        <groupId>com.dotlyte</groupId>
+        <artifactId>dotlyte</artifactId>
+        <version>0.1.0</version>
+    </dependency>
+    ```
+  </Tab>
+</Tabs>
+
+### Requirements
+
+- Java **17+**
+- Gradle 8+ or Maven 3.8+
+
+## Quick Start
+
+```java
+import com.dotlyte.Dotlyte;
+import com.dotlyte.Config;
+
+public class App {
+    public static void main(String[] args) {
+        Config config = Dotlyte.load();
+
+        String host = config.get("database.host", "localhost");
+        int port = Integer.parseInt(config.get("database.port", "5432"));
+
+        System.out.printf("DB: %s:%d%n", host, port);
+    }
+}
+```
+
+## API Reference
+
+### `Dotlyte.load(options?)`
+
+```java
+import com.dotlyte.Dotlyte;
+import com.dotlyte.Config;
+import com.dotlyte.LoadOptions;
+
+// Basic
+Config config = Dotlyte.load();
+
+// With options
+Config config = Dotlyte.load(new LoadOptions.Builder()
+    .files(List.of(".env", "config.yaml"))
+    .prefix("APP_")
+    .defaults(Map.of("port", 3000))
+    .env("production")
+    .build());
+```
+
+### `Config`
+
+#### `get(String key, String defaultValue)`
+
+```java
+String host = config.get("server.host", "0.0.0.0");
+String port = config.get("server.port", "8080");
+String missing = config.get("nope"); // null
+```
+
+#### `require(String key)`
+
+```java
+import com.dotlyte.DotlyteException;
+
+try {
+    String dbUrl = config.require("database_url");
+} catch (DotlyteException e) {
+    System.err.println("Missing: " + e.getKey());
+}
+```
+
+#### `has(String key)`
+
+```java
+if (config.has("redis.host")) {
+    setupRedis(config.require("redis.host"));
+}
+```
+
+### `LoadOptions`
+
+```java
+LoadOptions options = new LoadOptions.Builder()
+    .files(List.of(".env", "settings.yaml"))
+    .prefix("MYAPP_")
+    .defaults(Map.of("log_level", "info"))
+    .sources(List.of("env", "dotenv", "yaml"))
+    .env("staging")
+    .build();
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `files` | `List<String>` | Explicit config file paths |
+| `prefix` | `String` | Env var prefix to strip |
+| `defaults` | `Map<String, Object>` | Default values |
+| `sources` | `List<String>` | Custom source load order |
+| `env` | `String` | Environment name |
+
+### `DotlyteException`
+
+```java
+public class DotlyteException extends RuntimeException {
+    public String getKey();
+    public String getMessage();
+}
+```
+
+<Callout type="info">
+  `DotlyteException` extends `RuntimeException`, so it's an **unchecked exception**. You can catch it explicitly where needed without declaring it in method signatures.
+</Callout>
+
+## Patterns
+
+### Spring Boot
+
+```java
+import com.dotlyte.Dotlyte;
+import com.dotlyte.Config;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public Config dotlyteConfig() {
+        return Dotlyte.load(new LoadOptions.Builder()
+            .prefix("APP_")
+            .env(System.getenv("SPRING_PROFILES_ACTIVE"))
+            .build());
+    }
+}
+```
+
+### Micronaut / Quarkus
+
+```java
+Config config = Dotlyte.load(new LoadOptions.Builder()
+    .prefix("APP_")
+    .env("production")
+    .build());
+
+String dbUrl = config.require("datasource.url");
+String dbUser = config.require("datasource.username");
+```
+
+### Validating at Startup
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        Config config = Dotlyte.load();
+
+        // Fail fast — validate all required keys at startup
+        String dbUrl = config.require("database_url");
+        String secret = config.require("jwt_secret");
+        String apiKey = config.require("api_key");
+
+        // Application starts only if all config is present
+        new Application(dbUrl, secret, apiKey).run();
+    }
+}
+```
+
+## Build & Test
+
+```bash
+cd langs/java
+
+# Build
+./gradlew build
+
+# Test (JUnit 5)
+./gradlew test
+
+# Clean build
+./gradlew clean build
+```
+
+## Project Structure
+
+```
+langs/java/
+├── src/main/java/com/dotlyte/
+│   ├── Dotlyte.java          # Static load() entry point
+│   ├── Config.java            # Config class
+│   ├── LoadOptions.java       # Builder-pattern options
+│   ├── DotlyteException.java  # Exception class
+│   ├── Coercion.java          # Type coercion
+│   └── parsers/
+│       ├── EnvParser.java
+│       ├── YamlParser.java
+│       ├── JsonParser.java
+│       └── TomlParser.java
+├── src/test/java/com/dotlyte/ # JUnit 5 tests
+├── build.gradle.kts
+└── settings.gradle.kts
+```

@@ -1,0 +1,141 @@
+---
+title: Type Coercion
+description: Automatic type conversion rules for string configuration values.
+icon: RefreshCw
+---
+
+DOTLYTE automatically coerces string values (from `.env` files and environment variables) to their proper types. Values from structured formats like YAML and JSON pass through unchanged.
+
+## Coercion Rules
+
+### Booleans
+
+| Input | Output |
+|-------|--------|
+| `"true"`, `"TRUE"`, `"True"` | `true` |
+| `"yes"`, `"YES"` | `true` |
+| `"1"` | `true` |
+| `"on"`, `"ON"` | `true` |
+| `"false"`, `"FALSE"`, `"False"` | `false` |
+| `"no"`, `"NO"` | `false` |
+| `"0"` | `false` |
+| `"off"`, `"OFF"` | `false` |
+
+### Numbers
+
+| Input | Output | Type |
+|-------|--------|------|
+| `"8080"` | `8080` | integer |
+| `"-42"` | `-42` | integer |
+| `"3.14"` | `3.14` | float |
+| `"-0.5"` | `-0.5` | float |
+
+### Null Values
+
+| Input | Output |
+|-------|--------|
+| `"null"` | `null` / `None` / `nil` |
+| `"none"` | `null` / `None` / `nil` |
+| `"nil"` | `null` / `None` / `nil` |
+| `""` (empty string) | `null` / `None` / `nil` |
+
+### Lists
+
+Comma-separated strings are converted to arrays:
+
+| Input | Output |
+|-------|--------|
+| `"a,b,c"` | `["a", "b", "c"]` |
+| `"1,2,3"` | `["1", "2", "3"]` |
+
+<Callout type="info">
+  List elements are **not** recursively coerced. Each element remains a string. This prevents ambiguity with values like `"true,false"` which becomes `["true", "false"]` not `[true, false]`.
+</Callout>
+
+### Passthrough
+
+Values that don't match any coercion pattern remain as strings:
+
+| Input | Output |
+|-------|--------|
+| `"hello"` | `"hello"` |
+| `"/path/to/file"` | `"/path/to/file"` |
+| `"https://example.com"` | `"https://example.com"` |
+
+## Structured Formats Pass Through
+
+Values from YAML, JSON, and TOML are **already typed** and pass through without coercion:
+
+```yaml title="config.yaml"
+port: 8080        # Already an integer — no coercion
+debug: true       # Already a boolean
+tags:
+  - api
+  - v2
+```
+
+```python
+config = load()
+type(config.port)   # int (from YAML, not coerced)
+type(config.debug)  # bool (from YAML, not coerced)
+type(config.tags)   # list (from YAML, not coerced)
+```
+
+## Code Examples
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte.coercion import coerce
+
+    coerce("true")    # True
+    coerce("8080")    # 8080
+    coerce("3.14")    # 3.14
+    coerce("a,b,c")   # ["a", "b", "c"]
+    coerce("null")    # None
+    coerce("hello")   # "hello"
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { coerce } from "dotlyte";
+
+    coerce("true");    // true
+    coerce("8080");    // 8080
+    coerce("3.14");    // 3.14
+    coerce("a,b,c");   // ["a", "b", "c"]
+    coerce("null");    // null
+    coerce("hello");   // "hello"
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    dotlyte.Coerce("true")    // true (bool)
+    dotlyte.Coerce("8080")    // int64(8080)
+    dotlyte.Coerce("3.14")    // float64(3.14)
+    dotlyte.Coerce("a,b,c")   // []interface{}{"a", "b", "c"}
+    dotlyte.Coerce("null")    // nil
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::coerce;
+
+    coerce("true");    // Value::Bool(true)
+    coerce("8080");    // Value::Int(8080)
+    coerce("3.14");    // Value::Float(3.14)
+    coerce("a,b,c");   // Value::List(["a", "b", "c"])
+    coerce("null");    // Value::Null
+    ```
+  </Tab>
+</Tabs>
+
+## Edge Cases
+
+| Input | Output | Reason |
+|-------|--------|--------|
+| `" true "` | `true` | Whitespace is trimmed |
+| `"TRUE"` | `true` | Case-insensitive |
+| `"1.0"` | `1.0` | Float, not integer |
+| `"1,2,"` | `["1", "2", ""]` | Trailing comma creates empty element |
+| `"42"` | `42` | Integer, not boolean (even though truthy) |

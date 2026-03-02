@@ -1,0 +1,121 @@
+---
+title: Environment Files
+description: How DOTLYTE discovers and loads .env files.
+icon: FileText
+---
+
+DOTLYTE automatically discovers and loads `.env` files from your project directory. This page explains the discovery rules, file format, and best practices.
+
+## File Discovery
+
+By default, DOTLYTE looks for these files (in load order):
+
+| File | Purpose | Commit to Git? |
+|------|---------|----------------|
+| `.env` | Base defaults | Yes |
+| `.env.{environment}` | Environment overrides | Yes |
+| `.env.local` | Local machine overrides | No |
+
+When using `env` option:
+
+```python
+config = load(env="production")
+# Loads: .env → .env.production → .env.local
+```
+
+## File Format
+
+`.env` files use the standard `KEY=VALUE` format:
+
+```bash title=".env"
+# Comments start with #
+APP_NAME=MyApp
+PORT=8080
+DEBUG=true
+
+# Quoted values preserve whitespace
+GREETING="Hello, World!"
+PATH_VALUE='C:\Users\app'
+
+# Empty values become null
+EMPTY_VAR=
+
+# Multi-word values
+DESCRIPTION=My awesome application
+```
+
+### Supported Syntax
+
+| Syntax | Example | Result |
+|--------|---------|--------|
+| Simple | `KEY=value` | `"value"` |
+| Double-quoted | `KEY="value with spaces"` | `"value with spaces"` |
+| Single-quoted | `KEY='raw value'` | `"raw value"` |
+| Empty | `KEY=` | `null` |
+| Comments | `# This is ignored` | — |
+| Inline comments | `KEY=value # comment` | `"value"` |
+
+### What's NOT Supported
+
+- Variable interpolation (`$VAR` or `${VAR}`) — values are literal
+- Multi-line values
+- `export` prefix (`export KEY=value` — the `export` is not stripped)
+
+## Explicit File Loading
+
+Override automatic discovery with the `files` option:
+
+```python
+config = load(files=["custom.env", "secrets.env"])
+# Only loads the specified files, skips auto-discovery
+```
+
+## Best Practices
+
+<Callout type="info">
+  **Always add `.env.local` to `.gitignore`.** It's meant for machine-specific config that shouldn't be shared.
+</Callout>
+
+### Recommended `.gitignore`
+
+```txt
+# Local environment files
+.env.local
+.env.*.local
+
+# Secret files
+.env.production
+*.secret.env
+```
+
+### Recommended File Structure
+
+```
+project/
+├── .env                    # Base config (committed)
+├── .env.development        # Dev overrides (committed)
+├── .env.production         # Prod overrides (committed or in CI)
+├── .env.local              # Machine-specific (gitignored)
+├── config.yaml             # Structured config (committed)
+└── config.production.yaml  # Prod structured config (committed)
+```
+
+## Environment Variable Prefix
+
+Use `prefix` to namespace your environment variables:
+
+```bash title=".env"
+MYAPP_DB_HOST=localhost
+MYAPP_DB_PORT=5432
+MYAPP_REDIS_URL=redis://localhost
+OTHER_SERVICE_URL=http://other  # Not loaded
+```
+
+```python
+config = load(prefix="MYAPP")
+
+config.db_host    # "localhost" (prefix stripped, lowercased)
+config.db_port    # 5432
+config.redis_url  # "redis://localhost"
+# OTHER_SERVICE_URL is excluded — wrong prefix
+```

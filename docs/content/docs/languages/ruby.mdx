@@ -1,0 +1,230 @@
+---
+title: Ruby
+description: Using DOTLYTE with Ruby — installation, API, and idiomatic patterns.
+icon: Gem
+---
+
+## Installation
+
+```bash
+gem install dotlyte
+```
+
+Or in your Gemfile:
+
+```ruby
+gem "dotlyte", "~> 0.1"
+```
+
+Then:
+
+```bash
+bundle install
+```
+
+### Requirements
+
+- Ruby **3.0+**
+- No required dependencies
+
+## Quick Start
+
+```ruby
+require "dotlyte"
+
+config = Dotlyte.load
+
+puts config.database.host    # "localhost"
+puts config.database.port    # 5432
+```
+
+## API Reference
+
+### `Dotlyte.load(options = {})`
+
+```ruby
+# Basic
+config = Dotlyte.load
+
+# With options
+config = Dotlyte.load(
+  files: [".env", "config.yaml"],
+  prefix: "APP_",
+  defaults: { port: 3000 },
+  env: "production"
+)
+```
+
+**Returns:** `Dotlyte::Config` instance.
+
+### `Config`
+
+#### `get(key, default = nil)`
+
+```ruby
+host = config.get("server.host", "0.0.0.0")
+port = config.get("server.port", 8080)
+missing = config.get("nope")    # nil
+```
+
+#### `require(key)`
+
+```ruby
+begin
+  db_url = config.require("database_url")
+rescue Dotlyte::Error => e
+  puts "Missing: #{e.key}"
+  exit 1
+end
+```
+
+#### `has?(key)` / `key?(key)`
+
+```ruby
+if config.has?("redis.host")
+  setup_redis(config.require("redis.host"))
+end
+```
+
+#### Dot-Notation (method_missing)
+
+```ruby
+# These are equivalent
+config.database.host
+config.get("database.host")
+```
+
+#### Hash-Style Access
+
+```ruby
+config["database.host"]   # Same as config.get("database.host")
+```
+
+### `LoadOptions`
+
+| Option | Type | Description |
+|---|---|---|
+| `files` | `Array<String>` | Explicit config file paths |
+| `prefix` | `String` | Env var prefix to strip |
+| `defaults` | `Hash` | Default values (lowest priority) |
+| `sources` | `Array<String>` | Custom source load order |
+| `env` | `String` | Environment name |
+
+### `Dotlyte::Error`
+
+```ruby
+class Dotlyte::Error < StandardError
+  attr_reader :key
+end
+```
+
+## Patterns
+
+### Rails Initializer
+
+```ruby
+# config/initializers/dotlyte.rb
+require "dotlyte"
+
+DOTLYTE_CONFIG = Dotlyte.load(
+  prefix: "RAILS_APP_",
+  env: Rails.env
+)
+
+# Use throughout the app
+Rails.application.config.x.dotlyte = DOTLYTE_CONFIG
+```
+
+```ruby
+# Anywhere in your Rails app
+Rails.configuration.x.dotlyte.get("database.host")
+```
+
+### Sinatra
+
+```ruby
+require "sinatra"
+require "dotlyte"
+
+config = Dotlyte.load(prefix: "APP_")
+
+set :port, config.get("port", 4567)
+set :bind, config.get("host", "0.0.0.0")
+
+get "/" do
+  "Hello from DOTLYTE!"
+end
+```
+
+### Rake Tasks
+
+```ruby
+require "dotlyte"
+
+namespace :db do
+  task :migrate do
+    config = Dotlyte.load(env: ENV["RACK_ENV"] || "development")
+    db_url = config.require("database_url")
+    sh "DATABASE_URL=#{db_url} rake db:migrate"
+  end
+end
+```
+
+### RSpec Testing
+
+```ruby
+RSpec.describe "Config loading" do
+  let(:config) do
+    Dotlyte.load(
+      defaults: { "database.host" => "localhost", "database.port" => 5432 }
+    )
+  end
+
+  it "returns default host" do
+    expect(config.get("database.host")).to eq("localhost")
+  end
+
+  it "raises on missing required key" do
+    expect { config.require("missing") }.to raise_error(Dotlyte::Error)
+  end
+end
+```
+
+<Callout type="info">
+  DOTLYTE follows Ruby conventions: `snake_case` method names, `?` suffix for predicates, `Error` instead of `Exception` for error class name.
+</Callout>
+
+## Build & Test
+
+```bash
+cd langs/ruby
+
+# Install dependencies
+bundle install
+
+# Run tests (RSpec)
+bundle exec rspec
+
+# Lint (RuboCop)
+bundle exec rubocop
+```
+
+## Project Structure
+
+```
+langs/ruby/
+├── lib/
+│   ├── dotlyte.rb         # Main module and load()
+│   ├── dotlyte/
+│   │   ├── config.rb      # Config class
+│   │   ├── coercion.rb    # Type coercion
+│   │   ├── error.rb       # Dotlyte::Error
+│   │   └── parsers/
+│   │       ├── env.rb
+│   │       ├── yaml.rb
+│   │       ├── json.rb
+│   │       └── toml.rb
+├── spec/                  # RSpec tests
+├── dotlyte.gemspec
+└── Gemfile
+```

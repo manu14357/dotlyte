@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DOTLYTE Test Fixture",
+  "description": "Schema for shared test fixtures that all language implementations must validate against",
+  "type": "object",
+  "required": ["description", "expected"],
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this test case validates"
+    },
+    "options": {
+      "type": "object",
+      "description": "Options to pass to load()",
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "defaults": {
+          "type": "object"
+        },
+        "env": {
+          "type": "string"
+        }
+      }
+    },
+    "env_vars": {
+      "type": "object",
+      "description": "Environment variables to set before loading",
+      "additionalProperties": { "type": "string" }
+    },
+    "expected": {
+      "type": "object",
+      "description": "The exact config output every language must produce after loading and coercion"
+    }
+  }
+}

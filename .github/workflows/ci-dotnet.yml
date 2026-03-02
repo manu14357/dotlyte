@@ -1,0 +1,37 @@
+name: CI - .NET
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'langs/dotnet/**'
+      - 'spec/**'
+  pull_request:
+    paths:
+      - 'langs/dotnet/**'
+      - 'spec/**'
+
+defaults:
+  run:
+    working-directory: langs/dotnet
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet-version: ['6.0.x', '8.0.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore
+      - name: Format check
+        run: dotnet format --verify-no-changes --no-restore
+      - name: Test
+        run: dotnet test --no-build --verbosity normal

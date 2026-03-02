@@ -1,0 +1,255 @@
+---
+title: .NET (C#)
+description: Using DOTLYTE with .NET and C# — installation, API, and idiomatic patterns.
+icon: Globe
+---
+
+## Installation
+
+```bash
+dotnet add package Dotlyte
+```
+
+Or in your `.csproj`:
+
+```xml
+<PackageReference Include="Dotlyte" Version="0.1.0" />
+```
+
+### Requirements
+
+- .NET **6.0+** (supports .NET 6, 8, and 10)
+- C# **10+**
+
+## Quick Start
+
+```csharp
+using Dotlyte;
+
+var config = DotlyteLoader.Load();
+
+var host = config.Get("database.host", "localhost");
+var port = config.Get("database.port", "5432");
+
+Console.WriteLine($"DB: {host}:{port}");
+```
+
+## API Reference
+
+### `DotlyteLoader.Load(options?)`
+
+```csharp
+using Dotlyte;
+
+// Basic
+var config = DotlyteLoader.Load();
+
+// With options
+var config = DotlyteLoader.Load(new LoadOptions
+{
+    Files = new[] { ".env", "config.yaml" },
+    Prefix = "APP_",
+    Defaults = new Dictionary<string, object>
+    {
+        ["port"] = 3000,
+        ["log_level"] = "info",
+    },
+    Env = "production",
+});
+```
+
+### `Config`
+
+#### `Get(string key, string? defaultValue = null)`
+
+```csharp
+var host = config.Get("server.host", "0.0.0.0");
+var port = config.Get("server.port", "8080");
+var missing = config.Get("nope"); // null
+```
+
+#### `Require(string key)`
+
+```csharp
+try
+{
+    var dbUrl = config.Require("database_url");
+}
+catch (DotlyteException ex)
+{
+    Console.Error.WriteLine($"Missing: {ex.Key}");
+    Environment.Exit(1);
+}
+```
+
+#### `Has(string key)`
+
+```csharp
+if (config.Has("redis.host"))
+{
+    SetupRedis(config.Require("redis.host"));
+}
+```
+
+### `LoadOptions`
+
+```csharp
+public class LoadOptions
+{
+    public string[]? Files { get; set; }
+    public string? Prefix { get; set; }
+    public Dictionary<string, object>? Defaults { get; set; }
+    public string[]? Sources { get; set; }
+    public string? Env { get; set; }
+}
+```
+
+### `DotlyteException`
+
+```csharp
+public class DotlyteException : Exception
+{
+    public string? Key { get; }
+
+    public DotlyteException(string message);
+    public DotlyteException(string message, string key);
+}
+```
+
+## Patterns
+
+### ASP.NET Core Minimal API
+
+```csharp
+using Dotlyte;
+
+var config = DotlyteLoader.Load(new LoadOptions
+{
+    Prefix = "APP_",
+    Env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+});
+
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
+
+app.MapGet("/", () => "Hello, DOTLYTE!");
+app.Run($"http://0.0.0.0:{config.Get("port", "5000")}");
+```
+
+### ASP.NET Core with DI
+
+```csharp
+using Dotlyte;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Register as singleton
+builder.Services.AddSingleton(_ =>
+    DotlyteLoader.Load(new LoadOptions
+    {
+        Prefix = "APP_",
+        Env = builder.Environment.EnvironmentName,
+    })
+);
+
+var app = builder.Build();
+
+app.MapGet("/config", (Config config) =>
+    new { Host = config.Get("host"), Port = config.Get("port") }
+);
+
+app.Run();
+```
+
+### Console Application
+
+```csharp
+using Dotlyte;
+
+var config = DotlyteLoader.Load(new LoadOptions
+{
+    Files = new[] { "appsettings.json", ".env" },
+    Defaults = new Dictionary<string, object>
+    {
+        ["log_level"] = "info",
+        ["max_retries"] = 3,
+    },
+});
+
+var logLevel = config.Get("log_level", "info");
+var maxRetries = int.Parse(config.Get("max_retries", "3"));
+Console.WriteLine($"Log level: {logLevel}, Max retries: {maxRetries}");
+```
+
+### xUnit Testing
+
+```csharp
+using Dotlyte;
+using Xunit;
+
+public class ConfigTests
+{
+    [Fact]
+    public void DefaultsAreApplied()
+    {
+        var config = DotlyteLoader.Load(new LoadOptions
+        {
+            Defaults = new Dictionary<string, object>
+            {
+                ["host"] = "localhost",
+            },
+        });
+
+        Assert.Equal("localhost", config.Get("host"));
+    }
+
+    [Fact]
+    public void RequireThrowsForMissingKey()
+    {
+        var config = DotlyteLoader.Load();
+        Assert.Throws<DotlyteException>(() => config.Require("nonexistent"));
+    }
+}
+```
+
+<Callout type="info">
+  DOTLYTE follows .NET conventions: `PascalCase` for public methods, nullable annotations enabled, XML documentation comments for IntelliSense, and multi-target framework support (`net6.0`, `net8.0`, `net10.0`).
+</Callout>
+
+## Build & Test
+
+```bash
+cd langs/dotnet
+
+# Build
+dotnet build
+
+# Test (xUnit)
+dotnet test
+
+# Format check
+dotnet format --verify-no-changes
+```
+
+## Project Structure
+
+```
+langs/dotnet/
+├── src/Dotlyte/
+│   ├── Dotlyte.csproj        # Multi-target: net6.0;net8.0;net10.0
+│   ├── DotlyteLoader.cs      # Static Load() entry point
+│   ├── Config.cs              # Config class
+│   ├── LoadOptions.cs         # Options record
+│   ├── DotlyteException.cs   # Exception class
+│   ├── Coercion.cs            # Type coercion engine
+│   └── Parsers/
+│       ├── EnvParser.cs
+│       ├── YamlParser.cs
+│       ├── JsonParser.cs
+│       └── TomlParser.cs
+├── tests/Dotlyte.Tests/
+│   ├── Dotlyte.Tests.csproj
+│   ├── CoercionTests.cs
+│   └── DotlyteLoaderTests.cs
+└── Dotlyte.sln
+```

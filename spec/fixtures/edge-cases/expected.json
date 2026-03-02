@@ -1,0 +1,12 @@
+{
+  "description": "Edge case: empty fixture directory — load() with no files returns empty config from defaults only",
+  "options": {
+    "defaults": {
+      "port": 3000
+    }
+  },
+  "env_vars": {},
+  "expected": {
+    "port": 3000
+  }
+}

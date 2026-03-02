@@ -1,0 +1,36 @@
+name: CI - PHP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'langs/php/**'
+      - 'spec/**'
+  pull_request:
+    paths:
+      - 'langs/php/**'
+      - 'spec/**'
+
+defaults:
+  run:
+    working-directory: langs/php
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.1', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          tools: composer
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+      - name: Static analysis
+        run: vendor/bin/phpstan analyse
+      - name: Test
+        run: vendor/bin/phpunit

@@ -1,0 +1,201 @@
+---
+title: Python
+description: Using DOTLYTE with Python — installation, API, and idiomatic patterns.
+icon: Terminal
+---
+
+## Installation
+
+```bash
+pip install dotlyte
+```
+
+For development (includes test and lint tooling):
+
+```bash
+pip install -e ".[dev]"
+```
+
+### Requirements
+
+- Python **3.9+**
+- Optional: `pyyaml` for YAML, `tomli` / `tomllib` for TOML
+
+## Quick Start
+
+```python
+from dotlyte import load
+
+config = load()
+
+# Dot-notation access
+print(config.database.host)   # "localhost"
+print(config.database.port)   # 5432 (auto-coerced from string)
+```
+
+## API Reference
+
+### `load(options=None)`
+
+```python
+from dotlyte import load, LoadOptions
+
+# Basic
+config = load()
+
+# With options
+config = load(LoadOptions(
+    files=[".env", "config.yaml"],
+    prefix="APP_",
+    defaults={"port": 3000},
+    env="production",
+))
+```
+
+**Returns:** `Config` object.
+
+### `Config`
+
+#### `config.get(key, default=None)`
+
+```python
+port = config.get("server.port", 8080)
+name = config.get("app.name", "myapp")
+```
+
+#### `config.require(key)`
+
+```python
+from dotlyte import DotlyteError
+
+try:
+    db_url = config.require("database_url")
+except DotlyteError as e:
+    print(f"Missing: {e.key}")
+```
+
+#### Dot-Notation Access
+
+```python
+# These are equivalent
+config.database.host
+config.get("database.host")
+```
+
+#### Dictionary-Style Access
+
+```python
+# Check existence
+if "database" in config:
+    print("database config exists")
+
+# Iterate keys
+for key in config:
+    print(key, config.get(key))
+```
+
+### `LoadOptions`
+
+```python
+from dotlyte import LoadOptions
+
+options = LoadOptions(
+    files=[".env", "settings.yaml"],
+    prefix="MYAPP_",
+    defaults={"log_level": "info"},
+    sources=["env", "dotenv", "yaml"],
+    env="staging",
+)
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `files` | `list[str]` | Explicit config file paths |
+| `prefix` | `str` | Env var prefix to strip (`APP_DB_HOST` → `db.host`) |
+| `defaults` | `dict` | Default values (lowest priority) |
+| `sources` | `list[str]` | Custom source load order |
+| `env` | `str` | Environment name (loads `.env.{env}`, `config.{env}.yaml`) |
+
+### `DotlyteError`
+
+```python
+from dotlyte import DotlyteError
+
+try:
+    val = config.require("missing_key")
+except DotlyteError as e:
+    print(e)        # Human-readable message
+    print(e.key)    # "missing_key"
+```
+
+## Patterns
+
+### Flask Integration
+
+```python
+from flask import Flask
+from dotlyte import load
+
+config = load(env="production", prefix="FLASK_")
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = config.require("secret_key")
+app.config["DEBUG"] = config.get("debug", False)
+```
+
+### Django Settings
+
+```python
+# settings.py
+from dotlyte import load
+
+config = load(
+    files=[".env", "config.yaml"],
+    env="production",
+)
+
+SECRET_KEY = config.require("secret_key")
+DEBUG = config.get("debug", False)
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": config.require("database.host"),
+        "PORT": config.get("database.port", 5432),
+        "NAME": config.require("database.name"),
+    }
+}
+```
+
+### CLI Tools
+
+```python
+import argparse
+from dotlyte import load
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--env", default="development")
+args = parser.parse_args()
+
+config = load(env=args.env)
+```
+
+## Type Hints
+
+DOTLYTE is fully typed with `py.typed` marker and passes `mypy --strict`:
+
+```python
+from dotlyte import load, Config, LoadOptions, DotlyteError
+
+config: Config = load()
+port: int = config.get("port", 8080)
+```
+
+## Testing
+
+```bash
+cd langs/python
+pytest                              # Run all tests
+pytest -x                           # Stop on first failure
+ruff check . && ruff format --check . # Lint
+mypy src/                           # Type check
+```

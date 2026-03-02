@@ -1,0 +1,232 @@
+---
+title: PHP
+description: Using DOTLYTE with PHP — installation, API, and idiomatic patterns.
+icon: Shield
+---
+
+## Installation
+
+```bash
+composer require dotlyte/dotlyte
+```
+
+### Requirements
+
+- PHP **8.1+**
+- No required dependencies (YAML support via `symfony/yaml` optional)
+
+## Quick Start
+
+```php
+<?php
+
+use Dotlyte\Dotlyte;
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+$config = Dotlyte::load();
+
+echo $config->get('database.host', 'localhost'); // "localhost"
+echo $config->get('database.port', 5432);        // 5432
+```
+
+## API Reference
+
+### `Dotlyte::load(array $options = []): Config`
+
+```php
+use Dotlyte\Dotlyte;
+use Dotlyte\LoadOptions;
+
+// Basic
+$config = Dotlyte::load();
+
+// With options
+$config = Dotlyte::load([
+    'files'    => ['.env', 'config.yaml'],
+    'prefix'   => 'APP_',
+    'defaults' => ['port' => 3000],
+    'env'      => 'production',
+]);
+```
+
+### `Config`
+
+#### `get(string $key, mixed $default = null): mixed`
+
+```php
+$host = $config->get('server.host', '0.0.0.0');
+$port = $config->get('server.port', 8080);
+$missing = $config->get('nope'); // null
+```
+
+#### `require(string $key): mixed`
+
+```php
+use Dotlyte\DotlyteException;
+
+try {
+    $dbUrl = $config->require('database_url');
+} catch (DotlyteException $e) {
+    echo "Missing: " . $e->getKey();
+    exit(1);
+}
+```
+
+#### `has(string $key): bool`
+
+```php
+if ($config->has('redis.host')) {
+    setupRedis($config->require('redis.host'));
+}
+```
+
+### Load Options
+
+| Option | Type | Description |
+|---|---|---|
+| `files` | `string[]` | Explicit config file paths |
+| `prefix` | `string` | Env var prefix to strip |
+| `defaults` | `array` | Default values (lowest priority) |
+| `sources` | `string[]` | Custom source load order |
+| `env` | `string` | Environment name |
+
+### `DotlyteException`
+
+```php
+class DotlyteException extends \RuntimeException
+{
+    public function getKey(): ?string;
+}
+```
+
+## Patterns
+
+### Laravel Service Provider
+
+```php
+<?php
+
+namespace App\Providers;
+
+use Dotlyte\Dotlyte;
+use Illuminate\Support\ServiceProvider;
+
+class DotlyteServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->app->singleton('dotlyte', function () {
+            return Dotlyte::load([
+                'prefix' => 'APP_',
+                'env'    => app()->environment(),
+            ]);
+        });
+    }
+}
+```
+
+```php
+// Usage anywhere in Laravel
+$config = app('dotlyte');
+$dbHost = $config->require('database.host');
+```
+
+### Symfony
+
+```php
+// config/services.php
+use Dotlyte\Dotlyte;
+
+$config = Dotlyte::load([
+    'prefix' => 'APP_',
+    'env'    => $_ENV['APP_ENV'] ?? 'dev',
+]);
+
+$container->setParameter('database.host', $config->require('database.host'));
+$container->setParameter('database.port', $config->get('database.port', 5432));
+```
+
+### Slim Framework
+
+```php
+use Slim\Factory\AppFactory;
+use Dotlyte\Dotlyte;
+
+$config = Dotlyte::load(['prefix' => 'APP_']);
+$app = AppFactory::create();
+
+$app->get('/', function ($request, $response) use ($config) {
+    $response->getBody()->write("Port: " . $config->get('port', 8080));
+    return $response;
+});
+
+$app->run();
+```
+
+### PHPUnit Testing
+
+```php
+use PHPUnit\Framework\TestCase;
+use Dotlyte\Dotlyte;
+use Dotlyte\DotlyteException;
+
+class ConfigTest extends TestCase
+{
+    public function testDefaults(): void
+    {
+        $config = Dotlyte::load([
+            'defaults' => ['host' => 'localhost'],
+        ]);
+
+        $this->assertEquals('localhost', $config->get('host'));
+    }
+
+    public function testRequireMissing(): void
+    {
+        $config = Dotlyte::load();
+        $this->expectException(DotlyteException::class);
+        $config->require('nonexistent');
+    }
+}
+```
+
+<Callout type="info">
+  DOTLYTE follows PHP conventions: PSR-4 autoloading, PSR-12 coding style, `RuntimeException` inheritance for the error class.
+</Callout>
+
+## Build & Test
+
+```bash
+cd langs/php
+
+# Install dependencies
+composer install
+
+# Test (PHPUnit)
+vendor/bin/phpunit
+
+# Static analysis (PHPStan)
+vendor/bin/phpstan analyse
+```
+
+## Project Structure
+
+```
+langs/php/
+├── src/
+│   ├── Dotlyte.php            # Static load() entry point
+│   ├── Config.php             # Config class
+│   ├── LoadOptions.php        # Options class
+│   ├── DotlyteException.php   # Exception class
+│   ├── Coercion.php           # Type coercion engine
+│   └── Parsers/
+│       ├── EnvParser.php
+│       ├── YamlParser.php
+│       ├── JsonParser.php
+│       └── TomlParser.php
+├── tests/                     # PHPUnit tests
+├── composer.json
+├── phpunit.xml
+└── phpstan.neon
+```

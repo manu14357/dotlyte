@@ -1,0 +1,105 @@
+---
+title: Priority Order
+description: How DOTLYTE merges configuration from multiple sources.
+icon: Layers
+---
+
+DOTLYTE loads configuration from multiple sources and merges them with a deterministic priority order. **Higher-priority sources override lower-priority ones.**
+
+## Default Priority (Highest → Lowest)
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 (highest) | Environment variables | `os.environ` / `process.env` |
+| 2 | `.env` files | `.env`, `.env.local`, `.env.production` |
+| 3 | YAML / JSON config | `config.yaml`, `config.json` |
+| 4 | TOML / INI config | `config.toml` |
+| 5 (lowest) | Hardcoded defaults | `defaults` option in `load()` |
+
+## How Merging Works
+
+When the same key exists in multiple sources, the **higher priority source wins**:
+
+```bash title=".env"
+PORT=8080
+DATABASE_HOST=env-host
+```
+
+```yaml title="config.yaml"
+port: 3000
+database:
+  host: yaml-host
+  name: mydb
+```
+
+```python
+config = load(defaults={"port": 80, "timeout": 30})
+
+config.port     # → 8080 (from .env, overrides YAML's 3000 and default's 80)
+config.timeout  # → 30   (from defaults, only source)
+```
+
+## Deep Merging
+
+Nested objects are **deep merged**, not replaced:
+
+```yaml title="config.yaml"
+database:
+  host: localhost
+  port: 5432
+  name: mydb
+  pool:
+    min: 2
+    max: 10
+```
+
+```bash title=".env"
+DATABASE_PORT=3306
+```
+
+```python
+config = load()
+
+config.get("database.host")     # "localhost" (from YAML)
+config.get("database.port")     # 3306 (from .env, overrides YAML)
+config.get("database.pool.max") # 10 (from YAML, preserved)
+```
+
+## Environment-Specific Files
+
+When you specify `env`, additional files are loaded:
+
+```python
+config = load(env="production")
+```
+
+Load order becomes:
+1. `defaults`
+2. `config.toml`
+3. `config.yaml` / `config.json`
+4. `config.production.yaml` / `config.production.json`
+5. `.env`
+6. `.env.production`
+7. `.env.local`
+8. Environment variables
+
+## Custom Source Order
+
+Override the default order with the `sources` option:
+
+```python
+config = load(sources=["defaults", "env", "dotenv"])
+# Only loads defaults, env vars, and .env files — skips YAML/JSON/TOML
+```
+
+Valid source names: `"defaults"`, `"toml"`, `"yaml"`, `"json"`, `"dotenv"`, `"env"`
+
+## Practical Tips
+
+<Callout type="info">
+  **Environment variables always win.** This is by design — it allows you to override any config in deployment without changing files.
+</Callout>
+
+<Callout type="warn">
+  **`.env.local` is loaded last** among .env files. Use it for machine-specific overrides that should never be committed to version control.
+</Callout>

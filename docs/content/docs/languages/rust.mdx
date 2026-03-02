@@ -1,0 +1,233 @@
+---
+title: Rust
+description: Using DOTLYTE with Rust — installation, API, and idiomatic patterns.
+icon: Cog
+---
+
+## Installation
+
+```toml
+# Cargo.toml
+[dependencies]
+dotlyte = "0.1"
+```
+
+Or via CLI:
+
+```bash
+cargo add dotlyte
+```
+
+### Requirements
+
+- Rust **edition 2021** (1.56+)
+- Uses `thiserror` for error derive
+
+## Quick Start
+
+```rust
+use dotlyte::load;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = load(None)?;
+
+    let host = config.get::<String>("database.host")
+        .unwrap_or("localhost".into());
+
+    let port = config.get::<u16>("database.port")
+        .unwrap_or(5432);
+
+    println!("DB: {}:{}", host, port);
+    Ok(())
+}
+```
+
+## API Reference
+
+### `load(options: Option<LoadOptions>) -> Result<Config, DotlyteError>`
+
+```rust
+use dotlyte::{load, LoadOptions};
+use std::collections::HashMap;
+
+// Basic
+let config = load(None)?;
+
+// With options
+let config = load(Some(LoadOptions {
+    files: Some(vec![".env".into(), "config.yaml".into()]),
+    prefix: Some("APP_".into()),
+    defaults: Some(HashMap::from([
+        ("port".into(), serde_json::Value::from(3000)),
+    ])),
+    env: Some("production".into()),
+    ..Default::default()
+}))?;
+```
+
+### `Config`
+
+#### `get<T>(key: &str) -> Option<T>`
+
+```rust
+let host: Option<String> = config.get("server.host");
+let port: Option<u16> = config.get("server.port");
+let debug: Option<bool> = config.get("debug");
+```
+
+#### `require<T>(key: &str) -> Result<T, DotlyteError>`
+
+```rust
+let db_url: String = config.require("database_url")?;
+// Returns DotlyteError::MissingKey if not found
+```
+
+#### `has(key: &str) -> bool`
+
+```rust
+if config.has("redis.host") {
+    let redis_host: String = config.require("redis.host")?;
+}
+```
+
+### `LoadOptions`
+
+```rust
+#[derive(Default)]
+pub struct LoadOptions {
+    pub files: Option<Vec<String>>,
+    pub prefix: Option<String>,
+    pub defaults: Option<HashMap<String, serde_json::Value>>,
+    pub sources: Option<Vec<String>>,
+    pub env: Option<String>,
+}
+```
+
+### `DotlyteError`
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum DotlyteError {
+    #[error("Missing required key: {0}")]
+    MissingKey(String),
+
+    #[error("Parse error: {0}")]
+    ParseError(String),
+
+    #[error("File not found: {0}")]
+    FileNotFound(String),
+}
+```
+
+## Patterns
+
+### Actix-Web
+
+```rust
+use actix_web::{web, App, HttpServer};
+use dotlyte::load;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let config = load(None).expect("Failed to load config");
+    let port: u16 = config.get("port").unwrap_or(8080);
+
+    HttpServer::new(|| {
+        App::new()
+            .route("/", web::get().to(|| async { "Hello, DOTLYTE!" }))
+    })
+    .bind(("0.0.0.0", port))?
+    .run()
+    .await
+}
+```
+
+### Axum
+
+```rust
+use axum::{routing::get, Router};
+use dotlyte::load;
+
+#[tokio::main]
+async fn main() {
+    let config = load(None).expect("Failed to load config");
+    let port: u16 = config.get("port").unwrap_or(3000);
+
+    let app = Router::new().route("/", get(|| async { "Hello!" }));
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+```
+
+### Error Handling with `?`
+
+<Callout type="info">
+  DOTLYTE errors implement `std::error::Error` via `thiserror`, so they work seamlessly with `?` and libraries like `anyhow`.
+</Callout>
+
+```rust
+use anyhow::Result;
+use dotlyte::load;
+
+fn setup() -> Result<()> {
+    let config = load(None)?;
+    let db_url: String = config.require("database_url")?;
+    let port: u16 = config.require("port")?;
+    Ok(())
+}
+```
+
+### Pattern Matching Errors
+
+```rust
+use dotlyte::{load, DotlyteError};
+
+match load(None) {
+    Ok(config) => { /* use config */ }
+    Err(DotlyteError::FileNotFound(path)) => {
+        eprintln!("Config file not found: {}", path);
+    }
+    Err(DotlyteError::ParseError(msg)) => {
+        eprintln!("Failed to parse config: {}", msg);
+    }
+    Err(e) => eprintln!("Config error: {}", e),
+}
+```
+
+## Build & Test
+
+```bash
+cd langs/rust
+
+# Build
+cargo build
+
+# Test
+cargo test
+
+# Lint
+cargo fmt --check
+cargo clippy -- -D warnings
+```
+
+## Project Structure
+
+```
+langs/rust/
+├── src/
+│   ├── lib.rs        # Public API and re-exports
+│   ├── config.rs     # Config struct
+│   ├── loader.rs     # load() function
+│   ├── coercion.rs   # Type coercion
+│   ├── errors.rs     # DotlyteError enum
+│   └── parsers/
+│       ├── mod.rs
+│       ├── env.rs    # .env parser
+│       ├── yaml.rs   # YAML parser
+│       ├── json.rs   # JSON parser
+│       └── toml.rs   # TOML parser
+├── tests/            # Integration tests
+├── Cargo.toml
+└── Cargo.lock
+```

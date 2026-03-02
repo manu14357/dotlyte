@@ -1,0 +1,158 @@
+---
+title: LoadOptions
+description: All configuration options for the load() function.
+icon: SlidersHorizontal
+---
+
+All options are **optional**. Calling `load()` with no arguments uses sensible defaults.
+
+## Options
+
+### `files`
+
+**Type:** `string[]` | **Default:** `undefined`
+
+Explicit list of files to load. When specified, automatic file discovery is skipped.
+
+```python
+config = load(files=["config/app.env", "config/database.env"])
+```
+
+### `prefix`
+
+**Type:** `string` | **Default:** `undefined`
+
+Strip this prefix from environment variable names. The prefix and separator (`_`) are removed, and the remaining key is lowercased.
+
+```python
+# Given: MYAPP_DB_HOST=localhost
+config = load(prefix="MYAPP")
+config.db_host  # "localhost"
+```
+
+### `defaults`
+
+**Type:** `dict` / `Record<string, unknown>` / `map[string]any` | **Default:** `{}`
+
+Default values used as the lowest-priority layer. Useful for providing fallback configuration.
+
+```python
+config = load(defaults={
+    "port": 3000,
+    "host": "0.0.0.0",
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+    }
+})
+```
+
+### `sources`
+
+**Type:** `string[]` | **Default:** `undefined`
+
+Custom source loading order. When specified, only the listed sources are loaded in the given order.
+
+Valid values: `"defaults"`, `"toml"`, `"yaml"`, `"json"`, `"dotenv"`, `"env"`
+
+```python
+# Only load defaults and env vars (skip all files)
+config = load(sources=["defaults", "env"])
+```
+
+### `env`
+
+**Type:** `string` | **Default:** `undefined`
+
+Environment name. When specified, environment-specific files are also loaded:
+
+- `config.{env}.yaml` / `config.{env}.yml`
+- `config.{env}.json`
+- `config.{env}.toml`
+- `.env.{env}`
+
+```python
+config = load(env="production")
+# Also loads: config.production.yaml, .env.production, etc.
+```
+
+## Language-Specific Signatures
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "C#"]}>
+  <Tab value="Python">
+    ```python
+    def load(
+        files: list[str] | None = None,
+        prefix: str | None = None,
+        defaults: dict | None = None,
+        sources: list[str] | None = None,
+        env: str | None = None,
+    ) -> Config
+    ```
+
+    Python uses keyword arguments directly instead of an options object.
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    interface LoadOptions {
+      files?: string[];
+      prefix?: string;
+      defaults?: Record<string, unknown>;
+      sources?: string[];
+      env?: string;
+    }
+
+    function load(options?: LoadOptions): Config;
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    type LoadOptions struct {
+        Files    []string
+        Prefix   string
+        Defaults map[string]any
+        Sources  []string
+        Env      string
+    }
+
+    func Load(opts *LoadOptions) *Config
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    pub struct LoadOptions {
+        pub files: Option<Vec<String>>,
+        pub prefix: Option<String>,
+        pub defaults: Option<HashMap<String, Value>>,
+        pub sources: Option<Vec<String>>,
+        pub env: Option<String>,
+    }
+
+    pub fn load(opts: Option<LoadOptions>) -> Result<Config, DotlyteError>;
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    public class LoadOptions {
+        private List<String> files;
+        private String prefix;
+        private Map<String, Object> defaults;
+        private List<String> sources;
+        private String env;
+        // Builder pattern for construction
+    }
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    public class LoadOptions
+    {
+        public List<string>? Files { get; set; }
+        public string? Prefix { get; set; }
+        public Dictionary<string, object?>? Defaults { get; set; }
+        public List<string>? Sources { get; set; }
+        public string? Env { get; set; }
+    }
+    ```
+  </Tab>
+</Tabs>

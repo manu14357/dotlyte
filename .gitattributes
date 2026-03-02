@@ -1,0 +1,37 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Language-specific diff drivers
+*.py    text diff=python
+*.js    text diff=javascript
+*.ts    text diff=javascript
+*.mjs   text diff=javascript
+*.cjs   text diff=javascript
+*.go    text diff=golang
+*.rs    text diff=rust
+*.java  text diff=java
+*.rb    text diff=ruby
+*.php   text diff=php
+*.cs    text diff=csharp
+
+# Binary files
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.gif   binary
+*.svg   text
+
+# Lock files — don't diff
+pnpm-lock.yaml  binary
+Cargo.lock      text -diff
+go.sum          text -diff
+
+# Shell scripts
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+# Windows-specific
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+gradlew.bat text eol=crlf

@@ -1,0 +1,199 @@
+---
+title: Config
+description: The Config object — access your configuration with dot-notation, get(), and require().
+icon: Settings
+---
+
+The `Config` object is returned by `load()` and provides multiple ways to access configuration values.
+
+## Methods
+
+### Dot-Notation Access
+
+Access top-level keys directly as properties:
+
+<Tabs items={["Python", "JavaScript", "Go", "Ruby"]}>
+  <Tab value="Python">
+    ```python
+    config = load()
+    config.port          # 8080
+    config.debug         # True
+    config.database_host # "localhost"
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    const config = load();
+    config.port;          // 8080
+    config.debug;         // true
+    config.database_host; // "localhost"
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    // Go uses Get() for all access
+    config.Get("port", nil)
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    config = Dotlyte.load
+    config.port          # 8080
+    config.debug         # true
+    config.database_host # "localhost"
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+### `get(key, default?)`
+
+Safely access a value by key with an optional fallback. Supports **dot-notation** for nested keys.
+
+<Tabs items={["Python", "JavaScript", "Go", "Java", "C#"]}>
+  <Tab value="Python">
+    ```python
+    config.get("port")                    # 8080
+    config.get("missing")                 # None
+    config.get("missing", 3000)           # 3000 (default)
+    config.get("database.host")           # "localhost" (nested)
+    config.get("database.pool.max", 10)   # 10 (nested default)
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    config.get("port");                    // 8080
+    config.get("missing");                 // undefined
+    config.get("missing", 3000);           // 3000
+    config.get("database.host");           // "localhost"
+    config.get("database.pool.max", 10);   // 10
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    config.Get("port", nil)                  // 8080
+    config.Get("missing", nil)               // nil
+    config.Get("missing", 3000)              // 3000
+    config.Get("database.host", nil)         // "localhost"
+    config.Get("database.pool.max", 10)      // 10
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    config.get("port");                       // 8080
+    config.get("missing");                    // null
+    config.get("missing", 3000);              // 3000
+    config.get("database.host");              // "localhost"
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    config.Get("port");                       // 8080
+    config.Get("missing");                    // null
+    config.Get("missing", 3000);              // 3000
+    config.Get("database.host");              // "localhost"
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+### `require(key)`
+
+Get a value or throw a `DotlyteError` if the key is missing. Use this for configuration that your application **cannot run without**.
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust"]}>
+  <Tab value="Python">
+    ```python
+    db_url = config.require("database_url")
+    # Raises: DotlyteError("Missing required config key 'database_url'. ...")
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    const dbUrl = config.require("database_url");
+    // Throws: DotlyteError: Missing required config key 'database_url'. ...
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    dbUrl, err := config.Require("database_url")
+    // err: DotlyteError: Missing required config key 'database_url'. ...
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    let db_url = config.require::<String>("database_url")?;
+    // Err: DotlyteError::MissingKey("database_url")
+    ```
+  </Tab>
+</Tabs>
+
+<Callout type="warn">
+  `require()` is designed to **fail fast**. Use it at application startup for critical config so you catch missing values immediately — not at runtime when a request comes in.
+</Callout>
+
+---
+
+### `has(key)`
+
+Check if a key exists in the configuration:
+
+```python
+if config.has("database.host"):
+    connect_to_db(config.get("database.host"))
+```
+
+Returns `true` / `True` / `bool` depending on language.
+
+---
+
+## Nested Config
+
+When a value is a nested object (from YAML/JSON), accessing it returns another `Config` object:
+
+```yaml title="config.yaml"
+database:
+  host: localhost
+  port: 5432
+  credentials:
+    user: admin
+    password: secret
+```
+
+```python
+config = load()
+
+# Option 1: Dot-notation string
+config.get("database.credentials.user")  # "admin"
+
+# Option 2: Nested traversal (Python/JS/Ruby)
+config.database.credentials.user         # "admin"
+```
+
+## Iteration
+
+<Tabs items={["Python", "JavaScript"]}>
+  <Tab value="Python">
+    ```python
+    # Convert to dict
+    data = config.to_dict()
+
+    # Iterate
+    for key, value in data.items():
+        print(f"{key} = {value}")
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    // Spread into object
+    const data = { ...config };
+
+    // Or use entries
+    for (const [key, value] of Object.entries(config)) {
+      console.log(`${key} = ${value}`);
+    }
+    ```
+  </Tab>
+</Tabs>

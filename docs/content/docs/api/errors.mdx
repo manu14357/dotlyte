@@ -1,0 +1,188 @@
+---
+title: Errors
+description: Error handling and the DotlyteError type.
+icon: AlertTriangle
+---
+
+DOTLYTE provides clear, actionable error messages that include the key name, sources checked, and a suggestion for resolution.
+
+## DotlyteError
+
+The base error type for all DOTLYTE errors. Every language implementation uses an equivalent type.
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "C#"]}>
+  <Tab value="Python">
+    ```python
+    class DotlyteError(Exception):
+        key: str | None    # The config key that caused the error
+        message: str       # Human-readable error message
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    class DotlyteError extends Error {
+      readonly key?: string;
+      readonly message: string;
+    }
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    type DotlyteError struct {
+        Key     string
+        Message string
+    }
+
+    func (e *DotlyteError) Error() string
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    #[derive(Debug, thiserror::Error)]
+    pub enum DotlyteError {
+        #[error("Missing required key: {0}")]
+        MissingKey(String),
+
+        #[error("Parse error: {0}")]
+        ParseError(String),
+    }
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    public class DotlyteException extends RuntimeException {
+        private final String key;
+        // getKey(), getMessage()
+    }
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    public class DotlyteException : Exception
+    {
+        public string? Key { get; }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Error Scenarios
+
+### Missing Required Key
+
+Thrown by `config.require(key)` when the key doesn't exist:
+
+```python
+config.require("database_url")
+# DotlyteError: Missing required config key 'database_url'.
+# Checked sources: .env, config.yaml, environment variables.
+# Suggestion: Add DATABASE_URL to your .env file or environment.
+```
+
+### Parse Error
+
+Thrown when a config file has invalid syntax:
+
+```python
+config = load()
+# DotlyteError: Invalid YAML syntax in config.yaml: expected block end (line 5).
+```
+
+### File Not Found
+
+When explicit files are specified but don't exist:
+
+```python
+config = load(files=["missing.env"])
+# DotlyteError: Config file not found: missing.env
+```
+
+## Handling Errors
+
+### Python
+
+```python
+from dotlyte import load, DotlyteError
+
+try:
+    config = load()
+    db_url = config.require("database_url")
+except DotlyteError as e:
+    print(f"Config error: {e}")
+    print(f"Key: {e.key}")
+    sys.exit(1)
+```
+
+### JavaScript
+
+```typescript
+import { load, DotlyteError } from "dotlyte";
+
+try {
+  const config = load();
+  const dbUrl = config.require("database_url");
+} catch (e) {
+  if (e instanceof DotlyteError) {
+    console.error(`Config error: ${e.message}`);
+    console.error(`Key: ${e.key}`);
+    process.exit(1);
+  }
+  throw e;
+}
+```
+
+### Go
+
+```go
+config := dotlyte.Load(nil)
+
+dbUrl, err := config.Require("database_url")
+if err != nil {
+    var dotErr *dotlyte.DotlyteError
+    if errors.As(err, &dotErr) {
+        log.Fatalf("Config error for key %s: %s", dotErr.Key, dotErr.Message)
+    }
+    log.Fatal(err)
+}
+```
+
+### Rust
+
+```rust
+use dotlyte::{load, DotlyteError};
+
+match load(None) {
+    Ok(config) => {
+        match config.require::<String>("database_url") {
+            Ok(url) => println!("DB URL: {}", url),
+            Err(DotlyteError::MissingKey(key)) => {
+                eprintln!("Missing required key: {}", key);
+                std::process::exit(1);
+            }
+            Err(e) => panic!("Unexpected error: {}", e),
+        }
+    }
+    Err(e) => {
+        eprintln!("Failed to load config: {}", e);
+        std::process::exit(1);
+    }
+}
+```
+
+## Best Practices
+
+<Callout type="info">
+  **Fail fast at startup.** Call `require()` for all critical config at application startup, not lazily at runtime. This ensures missing config is caught immediately.
+</Callout>
+
+```python
+# Good: Validate all required config at startup
+config = load()
+DB_URL = config.require("database_url")
+SECRET = config.require("jwt_secret")
+PORT = config.get("port", 8080)
+
+# Bad: Lazy access deep in request handler
+def handle_request():
+    db = connect(config.require("database_url"))  # Might fail on first request!
+```

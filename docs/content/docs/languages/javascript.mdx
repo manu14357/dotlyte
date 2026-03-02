@@ -1,0 +1,231 @@
+---
+title: JavaScript / TypeScript
+description: Using DOTLYTE with JavaScript and TypeScript — installation, API, and idiomatic patterns.
+icon: Code2
+---
+
+## Installation
+
+```bash
+# npm
+npm install dotlyte
+
+# pnpm
+pnpm add dotlyte
+
+# yarn
+yarn add dotlyte
+```
+
+### Requirements
+
+- Node.js **18+** (ESM)
+- TypeScript **5.0+** (optional but recommended)
+
+## Quick Start
+
+```typescript
+import { load } from "dotlyte";
+
+const config = load();
+
+// Typed access
+console.log(config.get("database.host")); // "localhost"
+console.log(config.get("database.port")); // 5432
+```
+
+## API Reference
+
+### `load(options?)`
+
+```typescript
+import { load } from "dotlyte";
+import type { LoadOptions } from "dotlyte";
+
+// Basic
+const config = load();
+
+// With options
+const config = load({
+  files: [".env", "config.yaml"],
+  prefix: "APP_",
+  defaults: { port: 3000 },
+  env: "production",
+});
+```
+
+**Returns:** `Config` object.
+
+### `Config`
+
+#### `config.get(key, defaultValue?)`
+
+```typescript
+const port = config.get("server.port", 8080);     // number
+const name = config.get("app.name", "myapp");       // string
+const missing = config.get("nope");                  // undefined
+```
+
+#### `config.require(key)`
+
+```typescript
+import { DotlyteError } from "dotlyte";
+
+try {
+  const dbUrl = config.require("database_url");
+} catch (e) {
+  if (e instanceof DotlyteError) {
+    console.error(`Missing key: ${e.key}`);
+  }
+}
+```
+
+#### `config.has(key)`
+
+```typescript
+if (config.has("redis.host")) {
+  setupRedis(config.require("redis.host"));
+}
+```
+
+### `LoadOptions`
+
+```typescript
+interface LoadOptions {
+  files?: string[];                  // Explicit config files
+  prefix?: string;                   // Env var prefix to strip
+  defaults?: Record<string, unknown>;// Default values
+  sources?: string[];                // Custom source order
+  env?: string;                      // Environment name
+}
+```
+
+### `DotlyteError`
+
+```typescript
+import { DotlyteError } from "dotlyte";
+
+class DotlyteError extends Error {
+  readonly key?: string;
+  readonly message: string;
+}
+```
+
+## TypeScript Support
+
+DOTLYTE ships with full TypeScript declarations. The package uses ESM with `.js` extension imports (standard `moduleResolution: "bundler"` convention).
+
+```typescript
+import { load, Config, LoadOptions, DotlyteError } from "dotlyte";
+
+const config: Config = load();
+```
+
+<Callout type="info">
+  DOTLYTE's TypeScript build uses `tsup` for bundling. Both ESM and CJS outputs are generated, so the package works in all Node.js environments.
+</Callout>
+
+## Patterns
+
+### Express.js
+
+```typescript
+import express from "express";
+import { load } from "dotlyte";
+
+const config = load({ prefix: "APP_", env: process.env.NODE_ENV });
+
+const app = express();
+app.listen(config.get("port", 3000), () => {
+  console.log(`Server running on port ${config.get("port", 3000)}`);
+});
+```
+
+### Next.js
+
+```typescript
+// next.config.ts
+import { load } from "dotlyte";
+
+const config = load({ env: process.env.NODE_ENV });
+
+export default {
+  env: {
+    API_URL: config.require("api_url"),
+    PUBLIC_KEY: config.get("public_key", ""),
+  },
+};
+```
+
+### Fastify
+
+```typescript
+import Fastify from "fastify";
+import { load } from "dotlyte";
+
+const config = load({ prefix: "SERVER_" });
+const fastify = Fastify({
+  logger: config.get("log_enabled", true),
+});
+
+fastify.listen({ port: config.get("port", 3000) });
+```
+
+### Environment-Specific Loading
+
+```typescript
+const config = load({
+  env: process.env.NODE_ENV ?? "development",
+  defaults: {
+    log_level: "info",
+    port: 3000,
+  },
+});
+
+// Loads .env.development (or .env.production, etc.)
+// Then merges with defaults
+```
+
+## Build & Test
+
+```bash
+cd langs/javascript
+
+# Install dependencies
+pnpm install
+
+# Build (tsup)
+pnpm build
+
+# Test (vitest)
+pnpm test
+
+# Lint (ESLint)
+pnpm lint
+
+# Type check
+pnpm typecheck
+```
+
+## Project Structure
+
+```
+langs/javascript/
+├── src/
+│   ├── index.ts          # Public exports
+│   ├── loader.ts         # Core load() function
+│   ├── config.ts         # Config class
+│   ├── errors.ts         # DotlyteError
+│   ├── coercion.ts       # Type coercion engine
+│   ├── types.ts          # TypeScript interfaces
+│   └── parsers/
+│       ├── env.ts        # .env file parser
+│       ├── yaml.ts       # YAML parser
+│       ├── json.ts       # JSON parser
+│       ├── toml.ts       # TOML parser
+│       └── defaults.ts   # Defaults source
+├── test/                 # Vitest tests
+├── tsconfig.json
+├── tsup.config.ts
+└── package.json
+```

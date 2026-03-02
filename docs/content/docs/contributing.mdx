@@ -1,0 +1,155 @@
+---
+title: Contributing
+description: How to contribute to DOTLYTE — code, docs, and spec changes.
+icon: Users
+---
+
+We welcome contributions! DOTLYTE is a monorepo with 8 language implementations governed by a shared specification.
+
+## Getting Started
+
+1. **Fork** the repository
+2. **Clone** your fork:
+   ```bash
+   git clone https://github.com/<you>/dotlyte.git
+   cd dotlyte
+   ```
+3. **Pick a language** and set up the dev environment (see below)
+4. **Make changes**, add tests, and ensure all checks pass
+5. **Submit a PR** following the guidelines
+
+## Repository Structure
+
+```
+spec/              → Source of truth (API spec, test fixtures)
+langs/python/      → Python implementation
+langs/javascript/  → JavaScript/TypeScript implementation
+langs/go/          → Go implementation
+langs/rust/        → Rust implementation
+langs/java/        → Java implementation
+langs/ruby/        → Ruby implementation
+langs/php/         → PHP implementation
+langs/dotnet/      → .NET (C#) implementation
+.github/           → CI workflows, Copilot instructions
+docs/              → This documentation site (Fumadocs)
+```
+
+## Development Setup
+
+Each language has its own toolchain. Here are the quick-start commands:
+
+| Language | Setup | Test | Lint |
+|---|---|---|---|
+| Python | `pip install -e ".[dev]"` | `pytest` | `ruff check . && ruff format --check .` |
+| JavaScript | `pnpm install && pnpm build` | `pnpm test` | `pnpm lint && pnpm typecheck` |
+| Go | `go build ./...` | `go test -race ./...` | `gofmt -l . && go vet ./...` |
+| Rust | `cargo build` | `cargo test` | `cargo fmt --check && cargo clippy -- -D warnings` |
+| Java | `./gradlew build` | `./gradlew test` | — |
+| Ruby | `bundle install` | `bundle exec rspec` | `bundle exec rubocop` |
+| PHP | `composer install` | `vendor/bin/phpunit` | `vendor/bin/phpstan analyse` |
+| .NET | `dotnet build` | `dotnet test` | `dotnet format --verify-no-changes` |
+
+## Commit Format
+
+We use **conventional commits**:
+
+```
+<type>(<scope>): <description>
+```
+
+### Types
+
+- `feat` — New feature
+- `fix` — Bug fix
+- `docs` — Documentation only
+- `test` — Adding or fixing tests
+- `refactor` — Code change that neither fixes a bug nor adds a feature
+- `chore` — Build, CI, tooling changes
+- `perf` — Performance improvement
+
+### Scopes
+
+`python`, `js`, `go`, `rust`, `java`, `ruby`, `php`, `dotnet`, `spec`, `ci`, `docs`
+
+### Examples
+
+```
+feat(python): add TOML parser support
+fix(js): handle empty .env files without crashing
+test(go): add coercion edge case tests
+docs(spec): clarify priority order for env-specific files
+chore(ci): add PHP 8.3 to test matrix
+```
+
+## PR Guidelines
+
+<Callout type="warn">
+  **One language per PR** (unless it's a spec change that affects all implementations).
+</Callout>
+
+1. **All CI checks must pass** — tests, lint, format, type checks
+2. **Include tests** — especially spec conformance tests from `spec/fixtures/`
+3. **Update CHANGELOG.md** in the affected `langs/<lang>/` directory
+4. **Keep PRs focused** — one feature or fix per PR
+5. **Write clear descriptions** — explain what changed and why
+
+## Spec Changes
+
+If you want to change the public API or behavior:
+
+1. **Open an issue first** to discuss the change
+2. **Update `spec/`** — API contract, test fixtures, type coercion rules
+3. **Update all 8 implementations** (or clearly mark which are pending)
+4. **This requires a spec-scoped PR:** `feat(spec): add new option`
+
+<Callout type="info">
+  The spec in `spec/` is the source of truth. Never add a language-specific public API without updating the spec first.
+</Callout>
+
+## Adding a New Language
+
+Want to add a 9th language? Here's the process:
+
+1. Open an issue: "Add &lt;Language&gt; implementation"
+2. Create `langs/<language>/` with the standard project structure
+3. Implement the full API contract: `load()`, `Config`, `get()`, `require()`, `has()`
+4. Pass all shared test fixtures in `spec/fixtures/`
+5. Add CI workflow in `.github/workflows/`
+6. Add Copilot instructions in `.github/instructions/`
+7. Add documentation page in `docs/content/docs/languages/`
+
+## Error Messages
+
+DOTLYTE error messages must be **clear and actionable**:
+
+```
+Good:
+  Missing required config key 'database_url'.
+  Checked sources: .env, config.yaml, environment variables.
+  Suggestion: Add DATABASE_URL to your .env file or environment.
+
+Bad:
+  Key not found
+```
+
+Always include:
+- The missing key name
+- The sources that were checked
+- A suggestion for resolution
+
+## Code Style
+
+Follow each language's idiomatic conventions:
+
+- **Python:** snake_case, PEP 8, type hints, ruff
+- **JavaScript:** camelCase, ESLint, Prettier, TypeScript strict
+- **Go:** gofmt, go vet, exported names PascalCase
+- **Rust:** rustfmt, clippy, snake_case, `Result<T, E>` for errors
+- **Java:** camelCase, Google Java Style, JUnit 5
+- **Ruby:** snake_case, RuboCop, RSpec
+- **PHP:** PSR-12, PHPStan, camelCase methods
+- **C#:** PascalCase, nullable annotations, XML docs
+
+## Questions?
+
+Open an issue on GitHub — we're happy to help!

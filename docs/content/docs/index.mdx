@@ -1,0 +1,142 @@
+---
+title: Introduction
+description: Welcome to DOTLYTE — the universal configuration library for every language.
+icon: BookOpen
+---
+
+## What is DOTLYTE?
+
+**DOTLYTE** is a cross-language, open-source configuration loading library. It provides **one unified API** to load `.env` files, YAML, JSON, TOML, environment variables, and hardcoded defaults — with **automatic type coercion** and **layered priority merging**.
+
+```python
+from dotlyte import load
+
+config = load()
+
+config.port          # → 8080 (auto-coerced from string)
+config.debug         # → True (auto-coerced from "true")
+config.get("db.host") # → "localhost" (dot-notation access)
+```
+
+## The Problem
+
+Every project needs configuration. But every language does it differently:
+
+- Python has `python-dotenv` + `pyyaml` + `os.environ`
+- Node.js has `dotenv` + `config` + `process.env`
+- Go has `viper` + `godotenv`
+- Rust has `config` + `dotenvy`
+
+You end up writing the same boilerplate in every language, with different APIs, different behaviors, and different gotchas.
+
+## The Solution
+
+DOTLYTE gives you **one API** that works identically across **8 languages**:
+
+```
+load(options?) → Config
+Config.{key}              → dot-notation access
+Config.get(key, default?) → safe access with fallback
+Config.require(key)       → throws if missing
+```
+
+Learn it once. Use it everywhere.
+
+## Key Features
+
+<Cards>
+  <Card title="8 Languages">
+    Python, JavaScript/TypeScript, Go, Rust, Java, Ruby, PHP, and .NET — all following the same spec.
+  </Card>
+  <Card title="Auto Type Coercion">
+    Strings like "true", "8080", and "3.14" are automatically converted to their proper types.
+  </Card>
+  <Card title="Layered Priority">
+    Env vars → .env files → YAML/JSON → TOML → defaults. Higher layers always win.
+  </Card>
+  <Card title="Zero Dependencies">
+    Core implementations require zero external dependencies. Optional parsers degrade gracefully.
+  </Card>
+</Cards>
+
+## Quick Example
+
+Given a `.env` file:
+
+```bash title=".env"
+PORT=8080
+DEBUG=true
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+```
+
+Every DOTLYTE implementation loads it the same way:
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import load
+
+    config = load()
+    print(config.port)           # 8080 (int)
+    print(config.debug)          # True (bool)
+    print(config.database_host)  # "localhost" (str)
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { load } from "dotlyte";
+
+    const config = load();
+    console.log(config.port);          // 8080 (number)
+    console.log(config.debug);         // true (boolean)
+    console.log(config.database_host); // "localhost" (string)
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    package main
+
+    import (
+        "fmt"
+        dotlyte "github.com/dotlyte-io/dotlyte/langs/go"
+    )
+
+    func main() {
+        config := dotlyte.Load(nil)
+        fmt.Println(config.Get("port", nil))          // 8080
+        fmt.Println(config.Get("debug", nil))          // true
+        fmt.Println(config.Get("database_host", nil))  // localhost
+    }
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::load;
+
+    fn main() {
+        let config = load(None).unwrap();
+        println!("{}", config.get::<i64>("port").unwrap());     // 8080
+        println!("{}", config.get::<bool>("debug").unwrap());   // true
+        println!("{}", config.get::<String>("database_host").unwrap()); // localhost
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<Cards>
+  <Card title="Installation" href="/docs/installation">
+    Install DOTLYTE in your language of choice.
+  </Card>
+  <Card title="Quick Start" href="/docs/quick-start">
+    Build your first config-powered app in 5 minutes.
+  </Card>
+  <Card title="API Reference" href="/docs/api/load">
+    Explore the full API documentation.
+  </Card>
+  <Card title="Languages" href="/docs/languages/python">
+    See language-specific guides and examples.
+  </Card>
+</Cards>
