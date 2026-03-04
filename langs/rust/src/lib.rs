@@ -33,7 +33,7 @@ mod parsers;
 pub mod validator;
 pub mod watcher;
 
-pub use crate::coercion::{coerce, coerce_object};
+pub use crate::coercion::{coerce, coerce_object, coerce_str};
 pub use crate::config::{Config, FromValue};
 pub use crate::encryption::{
     decrypt_value, encrypt_value, generate_key, is_encrypted, resolve_encryption_key,

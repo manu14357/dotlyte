@@ -115,7 +115,7 @@ public final class Encryption {
         } catch (DotlyteException e) {
             throw e;
         } catch (Exception e) {
-            throw new DotlyteException("Decryption failed: " + e.getMessage(), e);
+            throw new DotlyteException.DecryptionException("Decryption failed: " + e.getMessage());
         }
     }
 

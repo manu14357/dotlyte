@@ -18,6 +18,47 @@ See per-language changelogs for detailed changes:
 
 ---
 
+## [0.1.1] — 2025-07-13
+
+### All Languages
+
+- Version bump to `0.1.1` across all 8 implementations
+- Bug fixes: Ruby encryption/interpolation error types, PHP autoloading, Java exception types
+- Integration tests added for all 8 languages (489 total consumer tests passing)
+
+### python
+- v0.1.1 release
+
+### javascript
+- v0.1.1 release
+
+### go
+- v0.1.1 release
+
+### rust
+- Re-exported `coerce_str` from public API
+- v0.1.1 release
+
+### java
+- Fixed `Validator.assertValid()` to throw `ValidationException` instead of base `DotlyteException`
+- Fixed `Encryption.decryptValue()` to throw `DecryptionException` instead of base `DotlyteException`
+- v0.1.1 release
+
+### ruby
+- Fixed encryption to use proper OpenSSL::Cipher for AES-256-GCM
+- Fixed interpolation to raise `InterpolationError` for `${VAR:?msg}` syntax
+- Fixed decryption to raise `DecryptionError` on failure
+- v0.1.1 release
+
+### php
+- Fixed PSR-4 autoloading for exception subclasses via `files` autoload directive
+- v0.1.1 release
+
+### dotnet
+- v0.1.1 release
+
+---
+
 ## [Unreleased]
 
 ### spec

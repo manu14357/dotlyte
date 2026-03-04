@@ -1,6 +1,6 @@
 {
   "name": "dotlyte",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The universal .env and configuration library. One API for every language.",
   "type": "module",
   "exports": {

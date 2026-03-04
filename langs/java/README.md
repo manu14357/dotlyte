@@ -5,7 +5,7 @@ The universal `.env` and configuration library for Java.
 ## Installation (Gradle)
 
 ```kotlin
-implementation("dev.dotlyte:dotlyte:0.1.0")
+implementation("dev.dotlyte:dotlyte:0.1.1")
 ```
 
 ## Quick Start

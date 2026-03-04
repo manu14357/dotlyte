@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
   spec.name          = "dotlyte"
-  spec.version       = "2.0.0"
+  spec.version       = "0.1.1"
   spec.authors       = ["DOTLYTE Contributors"]
   spec.email         = ["hello@dotlyte.dev"]
 

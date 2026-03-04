@@ -104,7 +104,7 @@ export default function HomePage() {
       <section className="relative flex w-full flex-col items-center justify-center overflow-hidden px-6 py-24 text-center md:py-36">
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-fd-primary/5 to-transparent" />
         <div className="mb-4 inline-flex items-center rounded-full border border-fd-primary/20 bg-fd-primary/5 px-4 py-1.5 text-sm font-medium text-fd-primary">
-          v0.1.0 — Now in 8 Languages
+          v0.1.1 — Now in 8 Languages
         </div>
         <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
           Your config.{" "}

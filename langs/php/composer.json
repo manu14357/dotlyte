@@ -1,5 +1,6 @@
 {
     "name": "dotlyte/dotlyte",
+    "version": "0.1.1",
     "description": "The universal .env and configuration library for PHP — load, validate, encrypt, interpolate, and watch config from any source.",
     "type": "library",
     "license": "MIT",
@@ -14,7 +15,10 @@
     "autoload": {
         "psr-4": {
             "Dotlyte\\": "src/"
-        }
+        },
+        "files": [
+            "src/DotlyteException.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

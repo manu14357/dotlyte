@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "dev.dotlyte"
-version = "2.0.0"
+version = "0.1.1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11

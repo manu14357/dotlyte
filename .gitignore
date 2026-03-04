@@ -81,3 +81,6 @@ docs/.next/
 
 # === Rust lock (library) ===
 langs/rust/Cargo.lock
+
+# === Test project (local integration tests) ===
+test-project/
