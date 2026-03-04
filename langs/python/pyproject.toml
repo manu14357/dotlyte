@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dotlyte"
-version = "0.1.0"
+version = "2.0.0"
 description = "The universal .env and configuration library. One API for every language."
 readme = "README.md"
 license = "MIT"
@@ -30,11 +30,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+encryption = [
+    "cryptography>=42.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.9.0",
     "mypy>=1.13",
+    "cryptography>=42.0",
 ]
 
 [project.urls]

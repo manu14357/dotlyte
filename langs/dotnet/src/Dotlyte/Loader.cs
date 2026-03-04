@@ -1,12 +1,33 @@
+using System.Text;
 using System.Text.Json;
 
 namespace Dotlyte;
 
 /// <summary>
-/// Main loader orchestrator.
+/// Main loader orchestrator (v2).
 /// </summary>
 internal sealed class Loader
 {
+    private static readonly HashSet<string> SystemEnvBlocklist = new(StringComparer.Ordinal)
+    {
+        "PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL",
+        "LOGNAME", "HOSTNAME", "PWD", "OLDPWD", "SHLVL", "TMPDIR",
+        "EDITOR", "VISUAL", "PAGER", "DISPLAY",
+        "SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO",
+        "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
+        "XPC_FLAGS", "XPC_SERVICE_NAME", "COMMAND_MODE",
+        "LS_COLORS", "LSCOLORS", "CLICOLOR", "GREP_OPTIONS",
+        "COMP_WORDBREAKS", "HISTSIZE", "HISTFILESIZE", "HISTCONTROL",
+    };
+
+    private static readonly string[] SystemPrefixes =
+    [
+        "npm_", "VSCODE_", "ELECTRON_", "CHROME_", "GITHUB_", "CI_",
+        "GITLAB_", "JENKINS_", "TRAVIS_", "CIRCLECI_", "HOMEBREW_",
+        "JAVA_HOME", "GOPATH", "NVM_", "RVM_", "RBENV_", "PYENV_",
+        "CONDA_", "VIRTUAL_ENV", "CARGO_HOME",
+    ];
+
     private readonly LoadOptions _options;
 
     public Loader(LoadOptions options)
@@ -16,23 +37,38 @@ internal sealed class Loader
 
     public Config Load()
     {
+        var baseDir = _options.FindUp ? FindBaseDir() : (_options.Cwd ?? Directory.GetCurrentDirectory());
         var layers = new List<Dictionary<string, object?>>();
 
-        if (_options.Sources is not null)
+        if (_options.Files is { Length: > 0 })
+        {
+            foreach (var f in _options.Files)
+            {
+                var full = ResolvePath(f, baseDir);
+                if (!File.Exists(full))
+                    throw new FileException($"Config file not found: {full}", full);
+                var data = ParseFileByExtension(full);
+                AppendIf(layers, data);
+            }
+        }
+        else if (_options.Sources is not null)
         {
             foreach (var source in _options.Sources)
             {
-                var data = LoadSource(source);
-                if (data.Count > 0) layers.Add(data);
+                var data = LoadSource(source, baseDir);
+                AppendIf(layers, data);
             }
         }
         else
         {
             AppendIf(layers, _options.Defaults);
-            AppendIf(layers, LoadJsonFiles());
-            AppendIf(layers, LoadDotenvFiles());
+            AppendIf(layers, LoadJsonFiles(baseDir));
+            AppendIf(layers, LoadDotenvFiles(baseDir));
             AppendIf(layers, LoadEnvVars());
         }
+
+        // Overrides (highest priority)
+        AppendIf(layers, _options.Overrides);
 
         var merged = new Dictionary<string, object?>();
         foreach (var layer in layers)
@@ -40,7 +76,41 @@ internal sealed class Loader
             merged = Merger.DeepMerge(merged, layer);
         }
 
-        return new Config(merged);
+        // Interpolation
+        if (_options.InterpolateVars)
+        {
+            merged = Interpolation.InterpolateDeep(merged);
+        }
+
+        // Schema defaults
+        if (_options.Schema is not null)
+        {
+            Validator.ApplyDefaults(merged, _options.Schema);
+        }
+
+        // Decryption
+        var encKey = Encryption.ResolveEncryptionKey(_options.Env);
+        if (encKey is not null)
+        {
+            merged = DecryptRecursive(merged, encKey);
+        }
+
+        // Schema validation
+        if (_options.Schema is not null && _options.Strict)
+        {
+            Validator.AssertValid(merged, _options.Schema, _options.Strict);
+        }
+
+        // Build sensitive keys
+        var sensitive = new List<string>();
+        if (_options.Schema is not null)
+        {
+            sensitive.AddRange(Validator.SensitiveKeys(_options.Schema));
+        }
+        sensitive.AddRange(Masking.BuildSensitiveSet(merged));
+        sensitive = sensitive.Distinct().ToList();
+
+        return new Config(merged, _options.Schema, sensitive);
     }
 
     private static void AppendIf(List<Dictionary<string, object?>> layers, Dictionary<string, object?> data)
@@ -48,19 +118,44 @@ internal sealed class Loader
         if (data.Count > 0) layers.Add(data);
     }
 
-    private Dictionary<string, object?> LoadSource(string name)
+    private string FindBaseDir()
+    {
+        var dir = Path.GetFullPath(_options.Cwd ?? Directory.GetCurrentDirectory());
+
+        while (true)
+        {
+            foreach (var marker in _options.RootMarkers)
+            {
+                if (File.Exists(Path.Combine(dir, marker)) || Directory.Exists(Path.Combine(dir, marker)))
+                    return dir;
+            }
+            var parent = Directory.GetParent(dir);
+            if (parent is null || parent.FullName == dir)
+                return _options.Cwd ?? Directory.GetCurrentDirectory();
+            dir = parent.FullName;
+        }
+    }
+
+    private static string ResolvePath(string file, string baseDir)
+    {
+        if (Path.IsPathRooted(file))
+            return file;
+        return Path.Combine(baseDir, file);
+    }
+
+    private Dictionary<string, object?> LoadSource(string name, string baseDir)
     {
         return name switch
         {
             "defaults" => _options.Defaults,
-            "json" => LoadJsonFiles(),
-            "dotenv" => LoadDotenvFiles(),
+            "json" => LoadJsonFiles(baseDir),
+            "dotenv" => LoadDotenvFiles(baseDir),
             "env" => LoadEnvVars(),
             _ => new Dictionary<string, object?>(),
         };
     }
 
-    private Dictionary<string, object?> LoadDotenvFiles()
+    private Dictionary<string, object?> LoadDotenvFiles(string baseDir)
     {
         var candidates = new List<string> { ".env" };
         if (_options.Env is not null)
@@ -70,8 +165,9 @@ internal sealed class Loader
         var merged = new Dictionary<string, object?>();
         foreach (var filename in candidates)
         {
-            if (!File.Exists(filename)) continue;
-            var data = ParseDotenv(filename);
+            var full = Path.Combine(baseDir, filename);
+            if (!File.Exists(full)) continue;
+            var data = ParseDotenv(full);
             merged = Merger.DeepMerge(merged, data);
         }
 
@@ -81,9 +177,14 @@ internal sealed class Loader
     private static Dictionary<string, object?> ParseDotenv(string filepath)
     {
         var result = new Dictionary<string, object?>();
-        foreach (var rawLine in File.ReadLines(filepath))
+        var lines = File.ReadAllLines(filepath);
+        var i = 0;
+
+        while (i < lines.Length)
         {
-            var line = rawLine.Trim();
+            var line = lines[i].Trim();
+            i++;
+
             if (string.IsNullOrEmpty(line) || line.StartsWith('#'))
                 continue;
 
@@ -96,13 +197,48 @@ internal sealed class Loader
             var key = line[..eqIndex].Trim();
             var value = line[(eqIndex + 1)..].Trim();
 
-            // Remove surrounding quotes
-            if (value.Length >= 2)
+            // Quoted values
+            if (value.Length >= 1 && (value[0] == '"' || value[0] == '\'' || value[0] == '`'))
             {
-                var first = value[0];
-                var last = value[^1];
-                if (first == last && (first == '"' || first == '\''))
-                    value = value[1..^1];
+                var quote = value[0];
+                if (quote is '\'' or '`')
+                {
+                    var endIdx = value.IndexOf(quote, 1);
+                    value = endIdx >= 0 ? value[1..endIdx] : value[1..];
+                }
+                else
+                {
+                    // Double-quoted, may be multiline
+                    var stripped = value[1..];
+                    var closingIdx = stripped.IndexOf('"');
+                    if (closingIdx >= 0)
+                    {
+                        value = ProcessEscapes(stripped[..closingIdx]);
+                    }
+                    else
+                    {
+                        var sb = new StringBuilder(stripped);
+                        while (i < lines.Length)
+                        {
+                            sb.Append('\n').Append(lines[i]);
+                            i++;
+                            var bufStr = sb.ToString();
+                            var ci = bufStr.LastIndexOf('"');
+                            if (ci >= 0)
+                            {
+                                value = ProcessEscapes(bufStr[..ci]);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Unquoted: strip inline comment
+                var commentIdx = value.IndexOf(" #", StringComparison.Ordinal);
+                if (commentIdx >= 0)
+                    value = value[..commentIdx].TrimEnd();
             }
 
             result[key.ToLowerInvariant()] = Coercion.Coerce(value);
@@ -111,7 +247,16 @@ internal sealed class Loader
         return result;
     }
 
-    private Dictionary<string, object?> LoadJsonFiles()
+    private static string ProcessEscapes(string s)
+    {
+        return s.Replace("\\n", "\n")
+                .Replace("\\t", "\t")
+                .Replace("\\r", "\r")
+                .Replace("\\\"", "\"")
+                .Replace("\\\\", "\\");
+    }
+
+    private Dictionary<string, object?> LoadJsonFiles(string baseDir)
     {
         var candidates = new List<string> { "config.json" };
         if (_options.Env is not null)
@@ -120,9 +265,10 @@ internal sealed class Loader
         var merged = new Dictionary<string, object?>();
         foreach (var filename in candidates)
         {
-            if (!File.Exists(filename)) continue;
+            var full = Path.Combine(baseDir, filename);
+            if (!File.Exists(full)) continue;
 
-            var json = File.ReadAllText(filename);
+            var json = File.ReadAllText(full);
             var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
             if (doc is null) continue;
 
@@ -178,11 +324,37 @@ internal sealed class Loader
             {
                 if (!key.StartsWith(prefix!, StringComparison.Ordinal)) continue;
                 var cleanKey = key[prefix!.Length..].ToLowerInvariant();
-                SetNested(result, cleanKey, Coercion.Coerce(value));
+                var coerced = Coercion.Coerce(value);
+                if (coerced is not null)
+                    SetNested(result, cleanKey, coerced);
+            }
+            else if (_options.AllowAllEnvVars)
+            {
+                var coerced = Coercion.Coerce(value);
+                if (coerced is not null)
+                    result[key.ToLowerInvariant()] = coerced;
             }
             else
             {
-                result[key.ToLowerInvariant()] = Coercion.Coerce(value);
+                if (SystemEnvBlocklist.Contains(key))
+                    continue;
+
+                var skip = false;
+                foreach (var pfx in SystemPrefixes)
+                {
+                    if (key.StartsWith(pfx, StringComparison.Ordinal))
+                    {
+                        skip = true;
+                        break;
+                    }
+                }
+
+                if (!skip)
+                {
+                    var coerced = Coercion.Coerce(value);
+                    if (coerced is not null)
+                        result[key.ToLowerInvariant()] = coerced;
+                }
             }
         }
 
@@ -205,5 +377,38 @@ internal sealed class Loader
         }
 
         current[parts[^1]] = value;
+    }
+
+    private Dictionary<string, object?> ParseFileByExtension(string fullPath)
+    {
+        var ext = Path.GetExtension(fullPath).ToLowerInvariant();
+        return ext switch
+        {
+            ".env" => ParseDotenv(fullPath),
+            ".json" => ParseJsonFile(fullPath),
+            _ => ParseDotenv(fullPath), // fallback
+        };
+    }
+
+    private static Dictionary<string, object?> ParseJsonFile(string fullPath)
+    {
+        var json = File.ReadAllText(fullPath);
+        var doc = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+        return doc is not null ? ConvertJsonDict(doc) : new Dictionary<string, object?>();
+    }
+
+    private static Dictionary<string, object?> DecryptRecursive(Dictionary<string, object?> data, string keyHex)
+    {
+        var result = new Dictionary<string, object?>();
+        foreach (var (k, v) in data)
+        {
+            if (v is Dictionary<string, object?> nested)
+                result[k] = DecryptRecursive(nested, keyHex);
+            else if (Encryption.IsEncrypted(v))
+                result[k] = Coercion.Coerce(Encryption.DecryptValue((string)v!, keyHex));
+            else
+                result[k] = v;
+        }
+        return result;
     }
 }

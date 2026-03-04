@@ -59,8 +59,8 @@ func TestConfigRequireMissing(t *testing.T) {
 		t.Fatal("expected error for missing key")
 	}
 
-	if _, ok := err.(*DotlyteError); !ok {
-		t.Errorf("expected DotlyteError, got %T", err)
+	if _, ok := err.(*MissingRequiredKeyError); !ok {
+		t.Errorf("expected MissingRequiredKeyError, got %T", err)
 	}
 }
 

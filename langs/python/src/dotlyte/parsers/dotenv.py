@@ -1,4 +1,9 @@
-"""Dotenv (.env file) parser for DOTLYTE."""
+"""Dotenv (.env file) parser for DOTLYTE v2.
+
+Supports KEY=VALUE, KEY="VALUE", KEY='VALUE', export prefix,
+multiline double-quoted values, inline comments, and parse_raw()
+for interpolation-before-coercion workflow.
+"""
 
 from __future__ import annotations
 
@@ -12,47 +17,42 @@ from dotlyte.errors import ParseError
 class DotenvParser:
     """Parse .env files into configuration dictionaries.
 
-    Handles standard .env file format:
-    - KEY=value
-    - KEY="quoted value"
-    - KEY='quoted value'
-    - # comments
-    - Empty lines ignored
-    - export KEY=value (optional export prefix)
-
     Args:
         filepath: Path to the .env file.
 
     """
 
     def __init__(self, filepath: Path) -> None:
-        """Initialize with the path to a .env file.
-
-        Args:
-            filepath: Path to the .env file to parse.
-
-        """
         self.filepath = filepath
 
     def parse(self) -> dict[str, Any]:
-        """Parse the .env file into a dictionary with coerced values.
+        """Parse with type coercion. For interpolation, use parse_raw() instead."""
+        raw = self.parse_raw()
+        return {k: coerce(v) for k, v in raw.items()}
+
+    def parse_raw(self) -> dict[str, str]:
+        """Parse .env file returning raw string values (no coercion).
 
         Returns:
-            Dictionary of config key-value pairs.
+            Dictionary of lowercase keys → raw string values.
 
         Raises:
-            ParseError: If the file contains invalid syntax.
+            ParseError: If the file has invalid syntax.
 
         """
-        result: dict[str, Any] = {}
+        result: dict[str, str] = {}
 
         try:
             content = self.filepath.read_text(encoding="utf-8")
         except OSError:
             return result
 
-        for line_num, line in enumerate(content.splitlines(), start=1):
-            line = line.strip()
+        lines = content.splitlines()
+        i = 0
+
+        while i < len(lines):
+            line = lines[i].strip()
+            i += 1
 
             # Skip empty lines and comments
             if not line or line.startswith("#"):
@@ -65,18 +65,39 @@ class DotenvParser:
             # Parse KEY=VALUE
             if "=" not in line:
                 raise ParseError(
-                    f"Invalid syntax in {self.filepath}:{line_num}: "
-                    f"expected KEY=VALUE, got: {line!r}"
+                    f"Invalid syntax in {self.filepath}:{i}: "
+                    f"expected KEY=VALUE, got: {line!r}",
+                    file_path=str(self.filepath),
                 )
 
             key, _, value = line.partition("=")
             key = key.strip()
             value = value.strip()
 
-            # Remove surrounding quotes
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-                value = value[1:-1]
+            # Handle double-quoted multiline values
+            if value.startswith('"') and not value.endswith('"'):
+                parts = [value[1:]]
+                while i < len(lines):
+                    next_line = lines[i]
+                    i += 1
+                    if next_line.rstrip().endswith('"'):
+                        parts.append(next_line.rstrip()[:-1])
+                        break
+                    parts.append(next_line)
+                value = "\n".join(parts)
+            else:
+                # Remove surrounding quotes
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                    value = value[1:-1]
+                elif value and value[0] not in ('"', "'"):
+                    # Strip inline comments for unquoted values
+                    hash_idx = value.find(" #")
+                    if hash_idx != -1:
+                        value = value[:hash_idx].rstrip()
 
-            result[key.lower()] = coerce(value)
+            # Process escape sequences
+            value = value.replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\")
+
+            result[key.lower()] = value
 
         return result

@@ -2,13 +2,15 @@
 
 Gem::Specification.new do |spec|
   spec.name          = "dotlyte"
-  spec.version       = "0.1.0"
+  spec.version       = "2.0.0"
   spec.authors       = ["DOTLYTE Contributors"]
   spec.email         = ["hello@dotlyte.dev"]
 
-  spec.summary       = "The universal .env and configuration library."
+  spec.summary       = "The universal .env and configuration library with encryption, validation, and more."
   spec.description   = "One API to load .env, YAML, JSON, TOML, environment variables, " \
-                        "and defaults with automatic type coercion and layered priority."
+                        "and defaults with automatic type coercion, layered priority, " \
+                        "AES-256-GCM encryption, schema validation, variable interpolation, " \
+                        "sensitive value masking, and file watching."
   spec.homepage      = "https://dotlyte.dev"
   spec.license       = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
@@ -19,4 +21,6 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir["lib/**/*.rb", "README.md", "LICENSE"]
   spec.require_paths = ["lib"]
+
+  spec.add_dependency "base64"
 end
