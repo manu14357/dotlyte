@@ -84,3 +84,6 @@ langs/rust/Cargo.lock
 
 # === Test project (local integration tests) ===
 test-project/
+
+# === Publish script (contains tokens) ===
+scripts/publish-all.sh
