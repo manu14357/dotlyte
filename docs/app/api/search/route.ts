@@ -42,7 +42,7 @@ export const { GET } = createFromSource(source, {
             {
               heading: undefined,
               content:
-                (page.data as Record<string, unknown>).description as string ??
+                ((page.data as unknown as Record<string, unknown>).description as string) ??
                 "",
             },
           ],
@@ -52,9 +52,9 @@ export const { GET } = createFromSource(source, {
 
     return {
       id: page.url,
-      title: (page.data as Record<string, unknown>).title as string ?? "",
+      title: ((page.data as unknown as Record<string, unknown>).title as string) ?? "",
       description:
-        (page.data as Record<string, unknown>).description as string | undefined,
+        (page.data as unknown as Record<string, unknown>).description as string | undefined,
       url: page.url,
       structuredData,
     };

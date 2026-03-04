@@ -61,7 +61,7 @@ public class DotlyteLoaderTests
     public void Config_RequireThrowsOnMissing()
     {
         var config = new Config(new Dictionary<string, object?>());
-        Assert.Throws<DotlyteException>(() => config.Require("MISSING"));
+        Assert.Throws<MissingKeyException>(() => config.Require("MISSING"));
     }
 
     [Fact]

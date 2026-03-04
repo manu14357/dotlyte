@@ -6,9 +6,9 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Dotlyte</RootNamespace>
     <PackageId>Dotlyte</PackageId>
-    <Version>0.1.0</Version>
+    <Version>2.0.0</Version>
     <Authors>DOTLYTE Contributors</Authors>
-    <Description>The universal .env and configuration library for .NET.</Description>
+    <Description>The universal .env and configuration library for .NET — with encryption, schema validation, interpolation, and masking.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://dotlyte.dev</PackageProjectUrl>
     <RepositoryUrl>https://github.com/dotlyte-io/dotlyte</RepositoryUrl>

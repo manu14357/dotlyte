@@ -65,6 +65,19 @@ langs/dotnet/**/obj/
 .env.*.local
 !spec/fixtures/**/.env
 
+# === Encryption keys (NEVER commit) ===
+.dotlyte-keys
+*.key
+
 # === OS ===
 *.log
 *.tmp
+
+
+docs/.next/
+
+# === PHP ===
+.phpunit.result.cache
+
+# === Rust lock (library) ===
+langs/rust/Cargo.lock

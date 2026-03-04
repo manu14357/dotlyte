@@ -1,6 +1,6 @@
 {
     "name": "dotlyte/dotlyte",
-    "description": "The universal .env and configuration library for PHP.",
+    "description": "The universal .env and configuration library for PHP — load, validate, encrypt, interpolate, and watch config from any source.",
     "type": "library",
     "license": "MIT",
     "minimum-stability": "stable",
