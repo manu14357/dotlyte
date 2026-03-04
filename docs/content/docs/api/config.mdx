@@ -1,51 +1,12 @@
 ---
 title: Config
-description: The Config object — access your configuration with dot-notation, get(), and require().
+description: The Config object — access, validate, serialize, and watch your configuration.
 icon: Settings
 ---
 
-The `Config` object is returned by `load()` and provides multiple ways to access configuration values.
+The `Config` object is returned by `load()` and provides multiple ways to access, validate, export, and watch configuration values.
 
-## Methods
-
-### Dot-Notation Access
-
-Access top-level keys directly as properties:
-
-<Tabs items={["Python", "JavaScript", "Go", "Ruby"]}>
-  <Tab value="Python">
-    ```python
-    config = load()
-    config.port          # 8080
-    config.debug         # True
-    config.database_host # "localhost"
-    ```
-  </Tab>
-  <Tab value="JavaScript">
-    ```typescript
-    const config = load();
-    config.port;          // 8080
-    config.debug;         // true
-    config.database_host; // "localhost"
-    ```
-  </Tab>
-  <Tab value="Go">
-    ```go
-    // Go uses Get() for all access
-    config.Get("port", nil)
-    ```
-  </Tab>
-  <Tab value="Ruby">
-    ```ruby
-    config = Dotlyte.load
-    config.port          # 8080
-    config.debug         # true
-    config.database_host # "localhost"
-    ```
-  </Tab>
-</Tabs>
-
----
+## Access Methods
 
 ### `get(key, default?)`
 
@@ -67,32 +28,39 @@ Safely access a value by key with an optional fallback. Supports **dot-notation*
     config.get("missing");                 // undefined
     config.get("missing", 3000);           // 3000
     config.get("database.host");           // "localhost"
-    config.get("database.pool.max", 10);   // 10
     ```
   </Tab>
   <Tab value="Go">
     ```go
-    config.Get("port", nil)                  // 8080
+    config.Get("port", nil)                  // 8080 (any)
     config.Get("missing", nil)               // nil
     config.Get("missing", 3000)              // 3000
     config.Get("database.host", nil)         // "localhost"
-    config.Get("database.pool.max", 10)      // 10
     ```
   </Tab>
   <Tab value="Java">
     ```java
-    config.get("port");                       // 8080
+    config.get("port");                       // Object (8080)
     config.get("missing");                    // null
     config.get("missing", 3000);              // 3000
-    config.get("database.host");              // "localhost"
+
+    // Typed getters
+    config.getString("host");                 // String
+    config.getInt("port");                    // int
+    config.getBoolean("debug");               // boolean
+    config.getDouble("ratio");                // double
+    config.getList("items");                  // List<Object>
     ```
   </Tab>
   <Tab value="C#">
     ```csharp
-    config.Get("port");                       // 8080
+    config.Get("port");                       // object? (8080)
     config.Get("missing");                    // null
     config.Get("missing", 3000);              // 3000
-    config.Get("database.host");              // "localhost"
+
+    // Typed access via generic
+    config.Get<int>("port", 8080);            // int
+    config.Get<bool>("debug", false);         // bool
     ```
   </Tab>
 </Tabs>
@@ -107,25 +75,25 @@ Get a value or throw a `DotlyteError` if the key is missing. Use this for config
   <Tab value="Python">
     ```python
     db_url = config.require("database_url")
-    # Raises: DotlyteError("Missing required config key 'database_url'. ...")
+    # Raises: MissingKeyError("Missing required config key 'database_url'. ...")
     ```
   </Tab>
   <Tab value="JavaScript">
     ```typescript
     const dbUrl = config.require("database_url");
-    // Throws: DotlyteError: Missing required config key 'database_url'. ...
+    // Throws: MissingKeyError: Missing required config key 'database_url'. ...
     ```
   </Tab>
   <Tab value="Go">
     ```go
     dbUrl, err := config.Require("database_url")
-    // err: DotlyteError: Missing required config key 'database_url'. ...
+    // err: *MissingKeyError with Key and SourcesChecked fields
     ```
   </Tab>
   <Tab value="Rust">
     ```rust
-    let db_url = config.require::<String>("database_url")?;
-    // Err: DotlyteError::MissingKey("database_url")
+    let db_url = config.require("database_url")?;
+    // Err(DotlyteError::MissingKey { key, sources_checked })
     ```
   </Tab>
 </Tabs>
@@ -133,6 +101,30 @@ Get a value or throw a `DotlyteError` if the key is missing. Use this for config
 <Callout type="warn">
   `require()` is designed to **fail fast**. Use it at application startup for critical config so you catch missing values immediately — not at runtime when a request comes in.
 </Callout>
+
+---
+
+### `require_keys(*keys)` / `requireKeys(...keys)`
+
+Batch-require multiple keys in a single call:
+
+<Tabs items={["Python", "JavaScript", "Go"]}>
+  <Tab value="Python">
+    ```python
+    host, port, name = config.require_keys("db.host", "db.port", "db.name")
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    const [host, port, name] = config.requireKeys("db.host", "db.port", "db.name");
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    values, err := config.RequireKeys("db.host", "db.port", "db.name")
+    ```
+  </Tab>
+</Tabs>
 
 ---
 
@@ -146,6 +138,182 @@ if config.has("database.host"):
 ```
 
 Returns `true` / `True` / `bool` depending on language.
+
+---
+
+### Dot-Notation / Property Access
+
+Access nested values directly as properties (languages that support it):
+
+<Tabs items={["Python", "JavaScript", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    config.port          # 8080
+    config.database.host # "localhost" (nested Config)
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    config.port;          // 8080
+    config.database.host; // "localhost"
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    config.port          # 8080
+    config.database.host # "localhost"
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    $config->port;           // 8080
+    $config->database->host; // "localhost" (via __get)
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    config["port"];           // 8080
+    config["database"];       // nested Config (via indexer)
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+### `scope(prefix)` / `Scope(prefix)`
+
+Create a scoped sub-config limited to keys under a prefix:
+
+```python
+db = config.scope("database")
+db.get("host")  # same as config.get("database.host")
+db.get("port")  # same as config.get("database.port")
+```
+
+---
+
+## Serialization & Export
+
+### `keys()` / `Keys()`
+
+Returns top-level key names.
+
+### `to_flat_map()` / `toFlatMap()` / `ToFlatDictionary()`
+
+Returns a flat dictionary with all keys dot-expanded:
+
+```python
+config.to_flat_map()
+# {"database.host": "localhost", "database.port": 5432, "debug": true}
+```
+
+### `to_dict()` / `toObject()` / `ToDictionary()`
+
+Returns the full nested config as a native dictionary/object:
+
+```python
+config.to_dict()
+# {"database": {"host": "localhost", "port": 5432}, "debug": true}
+```
+
+### `to_dict_redacted()` / `toObjectRedacted()` / `ToDictionaryRedacted()`
+
+Like `to_dict()`, but masks sensitive values (passwords, tokens, keys, etc.):
+
+```python
+config.to_object_redacted()
+# {"database": {"host": "localhost", "password": "[REDACTED]"}, "api_key": "[REDACTED]"}
+```
+
+### `to_json()` / `toJson()` / `ToJson()`
+
+Serialize the configuration to a JSON string (pretty-printed).
+
+### `write_to(path)` / `writeTo(path)` / `WriteTo(path)`
+
+Write config to a file. Supported formats vary by language:
+
+| Language | Formats |
+|---|---|
+| Python | `.env`, `.json`, `.yaml`, `.toml` |
+| JavaScript | `.env`, `.json`, `.yaml` |
+| Go | `.env`, `.json`, `.yaml` |
+| Rust | `.env`, `.json`, `.yaml` |
+| Java | `.env`, `.json`, `.yaml` |
+| Ruby | `.env`, `.json`, `.yaml` |
+| PHP | `.json` only |
+| .NET | `.json` only |
+
+---
+
+## Validation
+
+### `validate(schema?)` / `Validate(schema?)`
+
+Validate config against schema rules. Returns a list of violations:
+
+```python
+violations = config.validate({
+    "port": {"type": "integer", "required": True, "min": 1, "max": 65535},
+    "host": {"type": "string", "required": True},
+})
+
+for v in violations:
+    print(f"{v.key}: {v.message}")
+```
+
+### `assert_valid(schema?)` / `assertValid(schema?)` / `AssertValid(schema?)`
+
+Like `validate()`, but throws a `ValidationError`/`ValidationException` if there are violations:
+
+```python
+config.assert_valid(schema)
+# Raises ValidationError with .violations list
+```
+
+---
+
+## File Watching (Python, JS, Go, Rust, Java, Ruby)
+
+When `watch=True` is passed to `load()`, the Config object supports event callbacks:
+
+### `on_change(callback)` / `onChange(callback)`
+
+Called when any config value changes:
+
+```python
+config.on_change(lambda old_config, new_config: print("Config reloaded"))
+```
+
+### `on_key_change(key, callback)` / `onKeyChange(key, callback)`
+
+Called when a specific key changes:
+
+```python
+config.on_key_change("database.host", lambda old_val, new_val:
+    print(f"DB host changed: {old_val} → {new_val}")
+)
+```
+
+### `on_error(callback)` / `onError(callback)`
+
+Called when watch encounters an error:
+
+```python
+config.on_error(lambda err: print(f"Watch error: {err}"))
+```
+
+### `close()` / `Close()`
+
+Stop watching and clean up resources:
+
+```python
+config.close()
+```
+
+<Callout type="info">
+  PHP and .NET do **not** support file watching. The `on_change`, `on_key_change`, `on_error`, and `close` methods are not available in those implementations.
+</Callout>
 
 ---
 
@@ -165,35 +333,13 @@ database:
 ```python
 config = load()
 
-# Option 1: Dot-notation string
+# Dot-notation string
 config.get("database.credentials.user")  # "admin"
 
-# Option 2: Nested traversal (Python/JS/Ruby)
+# Nested traversal (Python/JS/Ruby)
 config.database.credentials.user         # "admin"
+
+# Scoped access
+db = config.scope("database")
+db.get("credentials.user")               # "admin"
 ```
-
-## Iteration
-
-<Tabs items={["Python", "JavaScript"]}>
-  <Tab value="Python">
-    ```python
-    # Convert to dict
-    data = config.to_dict()
-
-    # Iterate
-    for key, value in data.items():
-        print(f"{key} = {value}")
-    ```
-  </Tab>
-  <Tab value="JavaScript">
-    ```typescript
-    // Spread into object
-    const data = { ...config };
-
-    // Or use entries
-    for (const [key, value] of Object.entries(config)) {
-      console.log(`${key} = ${value}`);
-    }
-    ```
-  </Tab>
-</Tabs>

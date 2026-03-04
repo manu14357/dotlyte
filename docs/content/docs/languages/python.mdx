@@ -35,28 +35,53 @@ print(config.database.port)   # 5432 (auto-coerced from string)
 
 ## API Reference
 
-### `load(options=None)`
+### `load(**options)`
+
+All parameters are **keyword-only**. There is no `LoadOptions` class — pass options directly:
 
 ```python
-from dotlyte import load, LoadOptions
+from dotlyte import load
 
 # Basic
 config = load()
 
 # With options
-config = load(LoadOptions(
+config = load(
     files=[".env", "config.yaml"],
     prefix="APP_",
     defaults={"port": 3000},
     env="production",
-))
+)
 ```
 
 **Returns:** `Config` object.
 
+#### Load Options
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `files` | `list[str] \| None` | `None` | Explicit config file paths |
+| `prefix` | `str \| None` | `None` | Env var prefix to strip (`APP_DB_HOST` → `db.host`) |
+| `defaults` | `dict \| None` | `None` | Default values (lowest priority) |
+| `sources` | `list[str] \| None` | `None` | Custom source load order |
+| `env` | `str \| None` | `None` | Environment name (loads `.env.{env}`, `config.{env}.yaml`) |
+| `schema` | `dict \| None` | `None` | Schema rules for validation (keys → `SchemaRule`) |
+| `strict` | `bool` | `False` | Raise on unknown keys not in schema |
+| `plugins` | `list[Source] \| None` | `None` | Custom source plugins |
+| `watch` | `bool` | `False` | Enable file watching / hot-reload |
+| `debounce_ms` | `int` | `100` | Debounce interval for file watcher (ms) |
+| `interpolate_vars` | `bool` | `True` | Enable `${VAR}` interpolation in values |
+| `override` | `bool` | `False` | Allow env vars to override all sources |
+| `debug` | `bool` | `False` | Print debug info during loading |
+| `find_up` | `bool` | `False` | Walk up directories to find config files |
+| `root_markers` | `list[str] \| None` | `None` | Stop markers for `find_up` (e.g. `[".git", "pyproject.toml"]`) |
+| `cwd` | `str \| Path \| None` | `None` | Working directory for file resolution |
+
 ### `Config`
 
 #### `config.get(key, default=None)`
+
+Safe access with dot-notation key and optional fallback:
 
 ```python
 port = config.get("server.port", 8080)
@@ -65,13 +90,44 @@ name = config.get("app.name", "myapp")
 
 #### `config.require(key)`
 
+Returns the value or raises `MissingRequiredKeyError`:
+
 ```python
-from dotlyte import DotlyteError
+from dotlyte import MissingRequiredKeyError
 
 try:
     db_url = config.require("database_url")
-except DotlyteError as e:
+except MissingRequiredKeyError as e:
     print(f"Missing: {e.key}")
+    print(f"Checked: {e.sources_checked}")
+```
+
+#### `config.require_keys(*keys)`
+
+Batch-require multiple keys at once. Returns a `dict` of key → value:
+
+```python
+required = config.require_keys("db.host", "db.port", "db.name")
+# {"db.host": "localhost", "db.port": 5432, "db.name": "mydb"}
+```
+
+#### `config.has(key)`
+
+Check if a key exists:
+
+```python
+if config.has("database.host"):
+    print("database host is configured")
+```
+
+#### `config.scope(prefix)`
+
+Create a scoped sub-config:
+
+```python
+db = config.scope("database")
+print(db.host)  # same as config.database.host
+print(db.get("port", 5432))
 ```
 
 #### Dot-Notation Access
@@ -82,50 +138,151 @@ config.database.host
 config.get("database.host")
 ```
 
-#### Dictionary-Style Access
+#### `in` Operator
 
 ```python
-# Check existence
 if "database" in config:
     print("database config exists")
-
-# Iterate keys
-for key in config:
-    print(key, config.get(key))
 ```
 
-### `LoadOptions`
+#### Serialization & Export
 
 ```python
-from dotlyte import LoadOptions
-
-options = LoadOptions(
-    files=[".env", "settings.yaml"],
-    prefix="MYAPP_",
-    defaults={"log_level": "info"},
-    sources=["env", "dotenv", "yaml"],
-    env="staging",
-)
+config.keys()              # Top-level keys
+config.to_flat_map()       # {"db.host": "localhost", "db.port": 5432, ...}
+config.to_dict()           # Deep nested dict
+config.to_object_redacted() # Dict with sensitive values masked
+config.to_json()           # JSON string
+config.write_to("out.json")  # Write to file (supports "json" format)
 ```
 
-| Field | Type | Description |
+#### Schema Validation
+
+```python
+from dotlyte import SchemaRule
+
+schema = {
+    "port": SchemaRule(type="integer", required=True, min=1, max=65535),
+    "host": SchemaRule(type="string", required=True),
+}
+
+violations = config.validate(schema)
+for v in violations:
+    print(v.key, v.message)
+
+# Or raise on invalid
+config.assert_valid(schema)  # raises ValidationError
+```
+
+#### File Watching (Hot-Reload)
+
+When `watch=True` is passed to `load()`:
+
+```python
+config = load(watch=True, debounce_ms=200)
+
+config.on_change(lambda new_cfg: print("Config changed!"))
+config.on_key_change("database.host", lambda old, new: print(f"{old} → {new}"))
+config.on_error(lambda err: print(f"Watch error: {err}"))
+
+# When done:
+config.close()
+```
+
+### Variable Interpolation
+
+Values can reference other config keys and env vars:
+
+```python
+# In .env or YAML:
+# BASE_URL=https://api.example.com
+# API_ENDPOINT=${BASE_URL}/v1
+# GREETING=${NAME:-World}       # default if NAME is missing
+# REQUIRED=${SECRET:?must set}  # error if SECRET is missing
+# LITERAL=$$NOT_INTERPOLATED    # escape with $$
+
+print(config.get("api_endpoint"))  # "https://api.example.com/v1"
+```
+
+### Encryption (AES-256-GCM)
+
+Encrypt and decrypt sensitive values using AES-256-GCM:
+
+```python
+from dotlyte import generate_key, encrypt_value, decrypt_value, encrypt_file, decrypt_file
+
+key = generate_key()   # 32-byte hex key
+
+# Value-level
+encrypted = encrypt_value("s3cret", key)    # "ENC[...]"
+plain = decrypt_value(encrypted, key)        # "s3cret"
+
+# File-level
+encrypt_file(".env", ".env.enc", key)
+decrypt_file(".env.enc", ".env.dec", key)
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `load()` when the key is available.
+
+### Sensitive Value Masking
+
+```python
+from dotlyte import REDACTED, build_sensitive_set, redact_object, format_redacted
+
+# Auto-detected sensitive keys (password, secret, token, api_key, etc.)
+config.to_object_redacted()
+# {"db.host": "localhost", "db.password": "**REDACTED**"}
+```
+
+### Error Types
+
+All errors extend `DotlyteError` (which extends `Exception`):
+
+| Error Class | Code | Extra Properties |
 |---|---|---|
-| `files` | `list[str]` | Explicit config file paths |
-| `prefix` | `str` | Env var prefix to strip (`APP_DB_HOST` → `db.host`) |
-| `defaults` | `dict` | Default values (lowest priority) |
-| `sources` | `list[str]` | Custom source load order |
-| `env` | `str` | Environment name (loads `.env.{env}`, `config.{env}.yaml`) |
-
-### `DotlyteError`
+| `DotlyteError` | `DOTLYTE_ERROR` | `key`, `code` |
+| `MissingRequiredKeyError` | `MISSING_REQUIRED_KEY` | `sources_checked` |
+| `ParseError` | `PARSE_ERROR` | `file_path` |
+| `FileError` | `FILE_NOT_FOUND` | `file_path` |
+| `ValidationError` | `VALIDATION_ERROR` | `violations` |
+| `InterpolationError` | `INTERPOLATION_ERROR` | — |
+| `DecryptionError` | `DECRYPTION_ERROR` | `file_path` |
 
 ```python
-from dotlyte import DotlyteError
+from dotlyte import DotlyteError, MissingRequiredKeyError, ValidationError
 
 try:
-    val = config.require("missing_key")
-except DotlyteError as e:
-    print(e)        # Human-readable message
-    print(e.key)    # "missing_key"
+    config.require("missing")
+except MissingRequiredKeyError as e:
+    print(e.code)             # "MISSING_REQUIRED_KEY"
+    print(e.key)              # "missing"
+    print(e.sources_checked)  # [".env", "config.yaml", ...]
+```
+
+### Public Exports
+
+```python
+# Core
+from dotlyte import Config, load
+
+# Errors
+from dotlyte import (DotlyteError, MissingRequiredKeyError, ParseError,
+                      FileError, ValidationError, InterpolationError, DecryptionError)
+
+# Schema
+from dotlyte import SchemaRule, SchemaViolation, validate_schema, assert_valid
+
+# Interpolation
+from dotlyte import interpolate
+
+# Encryption
+from dotlyte import encrypt_value, decrypt_value, encrypt_file, decrypt_file, generate_key
+
+# Masking
+from dotlyte import REDACTED, build_sensitive_set, redact_object, format_redacted
+
+# Watcher
+from dotlyte import ConfigWatcher
 ```
 
 ## Patterns
@@ -184,10 +341,29 @@ config = load(env=args.env)
 DOTLYTE is fully typed with `py.typed` marker and passes `mypy --strict`:
 
 ```python
-from dotlyte import load, Config, LoadOptions, DotlyteError
+from dotlyte import load, Config, DotlyteError
 
 config: Config = load()
 port: int = config.get("port", 8080)
+```
+
+## File Structure
+
+```
+src/dotlyte/
+├── __init__.py         # Public API exports
+├── config.py           # Config class
+├── loader.py           # load() function
+├── errors.py           # All error classes
+├── coercion.py         # Type coercion engine
+├── merger.py           # Deep merge logic
+├── interpolation.py    # ${VAR} interpolation
+├── encryption.py       # AES-256-GCM encrypt/decrypt
+├── validator.py        # Schema validation
+├── masking.py          # Sensitive value redaction
+├── watcher.py          # File watching / hot-reload
+├── parsers/            # File format parsers
+└── py.typed            # PEP 561 type marker
 ```
 
 ## Testing

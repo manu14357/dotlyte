@@ -21,20 +21,33 @@ cargo add dotlyte
 ### Requirements
 
 - Rust **edition 2021** (1.56+)
-- Uses `thiserror` for error derive
+- Default features include YAML and TOML support
+- Optional `encryption` feature for AES-256-GCM
+
+### Feature Flags
+
+| Feature | Dependencies | Default |
+|---|---|---|
+| `yaml` | `serde_yaml` | Yes |
+| `toml-support` | `toml` | Yes |
+| `encryption` | `aes-gcm`, `scrypt`, `base64`, `hex` | No |
+
+```toml
+# Enable encryption
+dotlyte = { version = "0.1", features = ["encryption"] }
+```
 
 ## Quick Start
 
 ```rust
 use dotlyte::load;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> dotlyte::Result<()> {
     let config = load(None)?;
 
-    let host = config.get::<String>("database.host")
+    let host: String = config.get("database.host")
         .unwrap_or("localhost".into());
-
-    let port = config.get::<u16>("database.port")
+    let port: i64 = config.get("database.port")
         .unwrap_or(5432);
 
     println!("DB: {}:{}", host, port);
@@ -44,79 +57,286 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## API Reference
 
-### `load(options: Option<LoadOptions>) -> Result<Config, DotlyteError>`
+### `load(options: Option<LoadOptions>) -> Result<Config>`
 
 ```rust
 use dotlyte::{load, LoadOptions};
-use std::collections::HashMap;
 
-// Basic
+// Basic (zero-config)
 let config = load(None)?;
 
 // With options
 let config = load(Some(LoadOptions {
     files: Some(vec![".env".into(), "config.yaml".into()]),
     prefix: Some("APP_".into()),
-    defaults: Some(HashMap::from([
-        ("port".into(), serde_json::Value::from(3000)),
-    ])),
     env: Some("production".into()),
     ..Default::default()
 }))?;
 ```
 
-### `Config`
-
-#### `get<T>(key: &str) -> Option<T>`
-
-```rust
-let host: Option<String> = config.get("server.host");
-let port: Option<u16> = config.get("server.port");
-let debug: Option<bool> = config.get("debug");
-```
-
-#### `require<T>(key: &str) -> Result<T, DotlyteError>`
-
-```rust
-let db_url: String = config.require("database_url")?;
-// Returns DotlyteError::MissingKey if not found
-```
-
-#### `has(key: &str) -> bool`
-
-```rust
-if config.has("redis.host") {
-    let redis_host: String = config.require("redis.host")?;
-}
-```
-
 ### `LoadOptions`
 
 ```rust
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct LoadOptions {
-    pub files: Option<Vec<String>>,
-    pub prefix: Option<String>,
-    pub defaults: Option<HashMap<String, serde_json::Value>>,
-    pub sources: Option<Vec<String>>,
-    pub env: Option<String>,
+    pub files: Option<Vec<String>>,                        // Explicit files to load
+    pub prefix: Option<String>,                            // Env var prefix to strip
+    pub defaults: Option<serde_json::Map<String, Value>>,  // Default values (lowest priority)
+    pub sources: Option<Vec<String>>,                      // Source order: "env","dotenv","yaml","json","toml","defaults"
+    pub env: Option<String>,                               // Environment name
+    pub schema: Option<DotlyteSchema>,                     // Schema for validation
+    pub strict: bool,                                      // Reject unknown keys
+    pub interpolate_vars: bool,                            // Enable ${VAR} interpolation
+    pub overrides: Option<serde_json::Map<String, Value>>, // Highest priority values
+    pub debug: bool,                                       // Debug logging
+    pub find_up: bool,                                     // Walk up directories for config
+    pub root_markers: Option<Vec<String>>,                 // Stop markers for find_up
+    pub cwd: Option<String>,                               // Working directory
+    pub allow_all_env_vars: bool,                          // Skip env var filtering
+    pub watch: bool,                                       // Enable file watching
+    pub debounce_ms: Option<u64>,                          // Watcher debounce interval
 }
 ```
 
-### `DotlyteError`
+### `Config`
+
+#### `get<T: FromValue>(key) -> Option<T>`
+
+Generic typed access. `FromValue` is implemented for `String`, `i64`, `f64`, `bool`:
+
+```rust
+let host: Option<String> = config.get("server.host");
+let port: Option<i64> = config.get("server.port");
+let debug: Option<bool> = config.get("debug");
+```
+
+#### `get_value(key) -> Option<&Value>`
+
+Get the raw `serde_json::Value`:
+
+```rust
+if let Some(val) = config.get_value("nested.key") {
+    println!("{}", val);
+}
+```
+
+#### `get_str(key) -> Option<&str>`
+
+Direct string access without allocation:
+
+```rust
+if let Some(host) = config.get_str("server.host") {
+    println!("Host: {}", host);
+}
+```
+
+#### `require(key) -> Result<&Value>`
+
+Returns the value or `DotlyteError::MissingKey`:
+
+```rust
+let db_url = config.require("database_url")?;
+```
+
+#### `require_keys(keys) -> Result<()>`
+
+Validate all keys exist:
+
+```rust
+config.require_keys(&["db.host", "db.port", "db.name"])?;
+```
+
+#### `has(key) -> bool`
+
+```rust
+if config.has("redis.host") {
+    let host = config.require("redis.host")?;
+}
+```
+
+#### `scope(prefix) -> Config`
+
+Create a scoped sub-config:
+
+```rust
+let db = config.scope("database");
+let host: Option<String> = db.get("host"); // same as config.get("database.host")
+```
+
+#### Serialization & Export
+
+```rust
+config.keys();           // Vec<String> — top-level keys
+config.to_map();         // &Map<String, Value> — raw data reference
+config.to_value();       // Value — deep clone
+config.to_flat_map();    // HashMap<String, String> — flattened
+config.to_map_redacted(); // Map<String, Value> — sensitive values → "[REDACTED]"
+config.to_json();        // String — JSON with redaction
+config.write_to("out.json")?; // Write to file
+```
+
+#### Schema Validation
+
+```rust
+use dotlyte::{DotlyteSchema, SchemaRule};
+
+let violations = config.validate();    // Vec<SchemaViolation>
+config.assert_valid()?;                // returns Result<()>
+```
+
+### `FromValue` Trait
+
+Enables generic `config.get<T>()`:
+
+```rust
+pub trait FromValue: Sized {
+    fn from_value(value: &Value) -> Option<Self>;
+}
+// Implemented for: String, i64, f64, bool
+```
+
+### Variable Interpolation
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+```rust
+use dotlyte::interpolate;
+// Also available as standalone function
+```
+
+### Encryption (AES-256-GCM)
+
+Requires the `encryption` feature:
+
+```rust
+use dotlyte::{generate_key, encrypt_value, decrypt_value, is_encrypted};
+
+let key = generate_key()?;
+
+let encrypted = encrypt_value("s3cret", &key)?;  // "ENC[aes-256-gcm,...]"
+let plain = decrypt_value(&encrypted, &key)?;      // "s3cret"
+
+assert!(is_encrypted(&encrypted));
+```
+
+### Sensitive Value Masking
+
+```rust
+use dotlyte::{REDACTED, build_sensitive_set, redact_map, format_redacted};
+
+let redacted = config.to_map_redacted();
+// {"db.host": "localhost", "db.password": "[REDACTED]"}
+```
+
+### Custom Source Plugin
+
+```rust
+use dotlyte::{Source, Result};
+use serde_json::{Map, Value};
+
+struct VaultSource;
+
+impl Source for VaultSource {
+    fn name(&self) -> &str { "vault" }
+    fn load(&self) -> Result<Map<String, Value>> {
+        let mut m = Map::new();
+        m.insert("secret".into(), Value::String("from-vault".into()));
+        Ok(m)
+    }
+}
+```
+
+### Error Types
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum DotlyteError {
-    #[error("Missing required key: {0}")]
-    MissingKey(String),
-
-    #[error("Parse error: {0}")]
-    ParseError(String),
-
-    #[error("File not found: {0}")]
-    FileNotFound(String),
+    MissingKey { key: String, sources_checked: Vec<String> },
+    ParseError { file: String, message: String },
+    FileError { file: String, message: String },
+    ValidationError { violations: Vec<SchemaViolation> },
+    InterpolationError { variable: String, message: String },
+    DecryptionError { message: String },
+    Io(#[from] std::io::Error),
 }
+```
+
+Pattern matching:
+
+```rust
+use dotlyte::{load, DotlyteError};
+
+match load(None) {
+    Ok(config) => { /* use config */ }
+    Err(DotlyteError::FileError { file, message }) => {
+        eprintln!("File error: {} — {}", file, message);
+    }
+    Err(DotlyteError::MissingKey { key, sources_checked }) => {
+        eprintln!("Missing: {} (checked: {:?})", key, sources_checked);
+    }
+    Err(e) => eprintln!("Error: {}", e),
+}
+```
+
+### Schema Types
+
+```rust
+pub type DotlyteSchema = std::collections::HashMap<String, SchemaRule>;
+
+pub struct SchemaRule {
+    pub rule_type: Option<String>,    // "string","number","boolean","array","object"
+    pub required: bool,
+    pub format: Option<String>,       // "url","email","ip","port","uuid","date"
+    pub pattern: Option<String>,      // regex
+    pub enum_values: Option<Vec<Value>>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub default: Option<Value>,
+    pub sensitive: bool,
+    pub doc: Option<String>,
+}
+
+pub struct SchemaViolation {
+    pub key: String,
+    pub message: String,
+    pub rule: String,
+}
+```
+
+### Public Exports
+
+```rust
+// Core
+use dotlyte::{load, Config, LoadOptions, Source, FromValue};
+
+// Errors
+use dotlyte::{DotlyteError, Result, SchemaViolation};
+
+// Schema
+use dotlyte::{DotlyteSchema, SchemaRule};
+use dotlyte::{validate_schema, assert_valid, apply_schema_defaults, get_sensitive_keys};
+
+// Coercion
+use dotlyte::{coerce, coerce_object, coerce_str};
+
+// Interpolation
+use dotlyte::interpolate;
+
+// Encryption (requires "encryption" feature)
+use dotlyte::{encrypt_value, decrypt_value, generate_key, is_encrypted, resolve_encryption_key};
+
+// Masking
+use dotlyte::{REDACTED, build_sensitive_set, redact_map, format_redacted};
+
+// Watcher
+use dotlyte::{ConfigWatcher, ChangeEvent};
 ```
 
 ## Patterns
@@ -130,13 +350,13 @@ use dotlyte::load;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let config = load(None).expect("Failed to load config");
-    let port: u16 = config.get("port").unwrap_or(8080);
+    let port: i64 = config.get("port").unwrap_or(8080);
 
     HttpServer::new(|| {
         App::new()
             .route("/", web::get().to(|| async { "Hello, DOTLYTE!" }))
     })
-    .bind(("0.0.0.0", port))?
+    .bind(("0.0.0.0", port as u16))?
     .run()
     .await
 }
@@ -151,7 +371,7 @@ use dotlyte::load;
 #[tokio::main]
 async fn main() {
     let config = load(None).expect("Failed to load config");
-    let port: u16 = config.get("port").unwrap_or(3000);
+    let port: i64 = config.get("port").unwrap_or(3000);
 
     let app = Router::new().route("/", get(|| async { "Hello!" }));
     let addr = format!("0.0.0.0:{}", port);
@@ -160,11 +380,7 @@ async fn main() {
 }
 ```
 
-### Error Handling with `?`
-
-<Callout type="info">
-  DOTLYTE errors implement `std::error::Error` via `thiserror`, so they work seamlessly with `?` and libraries like `anyhow`.
-</Callout>
+### Error Handling with `?` and anyhow
 
 ```rust
 use anyhow::Result;
@@ -172,27 +388,27 @@ use dotlyte::load;
 
 fn setup() -> Result<()> {
     let config = load(None)?;
-    let db_url: String = config.require("database_url")?;
-    let port: u16 = config.require("port")?;
+    let _db_url = config.require("database_url")?;
     Ok(())
 }
 ```
 
-### Pattern Matching Errors
+## File Structure
 
-```rust
-use dotlyte::{load, DotlyteError};
-
-match load(None) {
-    Ok(config) => { /* use config */ }
-    Err(DotlyteError::FileNotFound(path)) => {
-        eprintln!("Config file not found: {}", path);
-    }
-    Err(DotlyteError::ParseError(msg)) => {
-        eprintln!("Failed to parse config: {}", msg);
-    }
-    Err(e) => eprintln!("Config error: {}", e),
-}
+```
+langs/rust/src/
+├── lib.rs             # Public API and re-exports
+├── config.rs          # Config struct & FromValue trait
+├── loader.rs          # load() function & LoadOptions
+├── errors.rs          # DotlyteError enum & SchemaViolation
+├── coercion.rs        # Type coercion engine
+├── merger.rs          # Deep merge
+├── interpolation.rs   # ${VAR} interpolation
+├── encryption.rs      # AES-256-GCM (feature-gated)
+├── validator.rs       # Schema validation
+├── masking.rs         # Sensitive value redaction
+├── watcher.rs         # File watching
+└── parsers/           # .env, YAML, JSON, TOML parsers
 ```
 
 ## Build & Test
@@ -209,25 +425,4 @@ cargo test
 # Lint
 cargo fmt --check
 cargo clippy -- -D warnings
-```
-
-## Project Structure
-
-```
-langs/rust/
-├── src/
-│   ├── lib.rs        # Public API and re-exports
-│   ├── config.rs     # Config struct
-│   ├── loader.rs     # load() function
-│   ├── coercion.rs   # Type coercion
-│   ├── errors.rs     # DotlyteError enum
-│   └── parsers/
-│       ├── mod.rs
-│       ├── env.rs    # .env parser
-│       ├── yaml.rs   # YAML parser
-│       ├── json.rs   # JSON parser
-│       └── toml.rs   # TOML parser
-├── tests/            # Integration tests
-├── Cargo.toml
-└── Cargo.lock
 ```

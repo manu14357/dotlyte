@@ -7,13 +7,13 @@ icon: Hexagon
 ## Installation
 
 ```bash
-go get github.com/dotlyte/dotlyte-go
+go get github.com/dotlyte-io/dotlyte/langs/go
 ```
 
 ### Requirements
 
 - Go **1.21+**
-- No external dependencies
+- Dependencies: `gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`, `golang.org/x/crypto`
 
 ## Quick Start
 
@@ -24,55 +24,97 @@ import (
     "fmt"
     "log"
 
-    "github.com/dotlyte/dotlyte-go"
+    dotlyte "github.com/dotlyte-io/dotlyte/langs/go"
 )
 
 func main() {
-    config := dotlyte.Load(nil)
+    config, err := dotlyte.Load(nil)
+    if err != nil {
+        log.Fatal(err)
+    }
 
     host := config.Get("database.host", "localhost")
-    port := config.Get("database.port", "5432")
+    port := config.Get("database.port", 5432)
 
-    fmt.Printf("DB: %s:%s\n", host, port)
+    fmt.Printf("DB: %v:%v\n", host, port)
 }
 ```
 
 ## API Reference
 
-### `Load(options *LoadOptions) *Config`
+### `Load(opts *LoadOptions) (*Config, error)`
 
 ```go
-// Basic
-config := dotlyte.Load(nil)
+// Basic (zero-config)
+config, err := dotlyte.Load(nil)
 
 // With options
-config := dotlyte.Load(&dotlyte.LoadOptions{
+config, err := dotlyte.Load(&dotlyte.LoadOptions{
     Files:    []string{".env", "config.yaml"},
     Prefix:   "APP_",
-    Defaults: map[string]interface{}{"port": 3000},
+    Defaults: map[string]any{"port": 3000},
     Env:      "production",
 })
 ```
 
-### `Config`
+Returns a `*Config` and an `error`. The error may be `*FileError`, `*ValidationError`, etc.
 
-#### `Get(key string, defaultValue ...string) string`
+### `LoadOptions`
 
 ```go
-host := config.Get("server.host", "0.0.0.0")
-port := config.Get("server.port")    // "" if missing
-name := config.Get("app.name", "myapp")
+type LoadOptions struct {
+    Files           []string          // Explicit file paths (auto-discovers if empty)
+    Prefix          string            // Env var prefix to strip
+    Defaults        map[string]any    // Default values (lowest priority)
+    Sources         []string          // Source order: "env","dotenv","yaml","json","toml","defaults"
+    Env             string            // Environment name (loads .env.{env}, config.{env}.yaml)
+    Schema          DotlyteSchema     // Validation rules (map[string]*SchemaRule)
+    Strict          bool              // Reject unknown keys during validation
+    Plugins         []Source          // Custom source implementations
+    Watch           bool              // Enable file watching for hot-reload
+    DebounceMs      int               // Watcher debounce (default: 100ms)
+    InterpolateVars *bool             // Enable ${VAR} interpolation (nil = true)
+    Override        map[string]any    // Values that override everything (highest priority)
+    Debug           bool              // Enable debug logging via log.Printf
+    FindUp          bool              // Walk up directories to find config files
+    RootMarkers     []string          // Project root markers for FindUp
+    Cwd             string            // Override working directory
+    AllowAllEnvVars bool              // Disable env var filtering
+}
 ```
 
-#### `Require(key string) (string, error)`
+### `Config`
+
+#### `Get(key string, defaultVal ...any) any`
+
+Dot-notation access with optional default. Returns `any`:
+
+```go
+host := config.Get("server.host", "0.0.0.0")  // any
+port := config.Get("server.port")              // nil if missing
+```
+
+#### `Require(key string) (any, error)`
+
+Returns the value or a `*MissingRequiredKeyError`:
 
 ```go
 dbURL, err := config.Require("database_url")
 if err != nil {
-    var dotErr *dotlyte.DotlyteError
-    if errors.As(err, &dotErr) {
-        log.Fatalf("Missing config key: %s", dotErr.Key)
+    var missing *dotlyte.MissingRequiredKeyError
+    if errors.As(err, &missing) {
+        log.Fatalf("Missing: %s (checked: %v)", missing.Key, missing.SourcesChecked)
     }
+}
+```
+
+#### `RequireKeys(keys ...string) error`
+
+Validate multiple keys exist. Returns the first missing key error:
+
+```go
+if err := config.RequireKeys("db.host", "db.port", "db.name"); err != nil {
+    log.Fatal(err)
 }
 ```
 
@@ -84,28 +126,171 @@ if config.Has("redis.host") {
 }
 ```
 
-### `LoadOptions`
+#### `Scope(prefix string) *Config`
+
+Create a scoped sub-config:
 
 ```go
-type LoadOptions struct {
-    Files    []string               // Explicit config file paths
-    Prefix   string                 // Env var prefix to strip
-    Defaults map[string]interface{} // Default values (lowest priority)
-    Sources  []string               // Custom source order
-    Env      string                 // Environment name
+db := config.Scope("database")
+host := db.Get("host")  // same as config.Get("database.host")
+```
+
+#### `Keys() []string`
+
+Returns top-level keys.
+
+#### Serialization & Export
+
+```go
+config.ToMap()           // map[string]any — deep copy
+config.ToFlatMap()       // map[string]string — flattened
+config.ToMapRedacted()   // Sensitive values → "[REDACTED]"
+config.ToJSON()          // (string, error) — JSON with redaction
+config.WriteTo(path, format)  // Write to file ("json" or "env")
+```
+
+#### Schema Validation
+
+```go
+schema := dotlyte.DotlyteSchema{
+    "port": &dotlyte.SchemaRule{Type: "number", Required: true, Min: ptrFloat(1), Max: ptrFloat(65535)},
+    "host": &dotlyte.SchemaRule{Type: "string", Required: true},
+}
+
+violations := config.Validate()       // []SchemaViolation
+err := config.AssertValid()           // *ValidationError if invalid
+```
+
+#### File Watching (Hot-Reload)
+
+When `Watch: true` is set:
+
+```go
+config, _ := dotlyte.Load(&dotlyte.LoadOptions{Watch: true, DebounceMs: 200})
+
+config.OnChange(func(events []dotlyte.ChangeEvent) {
+    fmt.Println("Config changed!")
+})
+config.OnKeyChange("database.host", func(key string, oldVal, newVal any) {
+    fmt.Printf("%s: %v → %v\n", key, oldVal, newVal)
+})
+config.OnError(func(err error) {
+    log.Printf("Watch error: %v", err)
+})
+
+defer config.Close()
+```
+
+### Variable Interpolation
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+```go
+import dotlyte "github.com/dotlyte-io/dotlyte/langs/go"
+
+// Also available as standalone function
+result, err := dotlyte.Interpolate(data, context)
+```
+
+### Encryption (AES-256-GCM)
+
+```go
+key, _ := dotlyte.GenerateKey()
+
+// Value-level
+encrypted, _ := dotlyte.EncryptValue("s3cret", key)  // "ENC[aes-256-gcm,iv:...,data:...,tag:...]"
+plain, _ := dotlyte.DecryptValue(encrypted, key)       // "s3cret"
+
+// Check & decrypt maps recursively
+dotlyte.IsEncrypted(value)           // true if ENC[...] format
+dotlyte.DecryptMap(data, key)        // decrypt all ENC[...] values
+dotlyte.ResolveEncryptionKey("prod") // reads DOTLYTE_KEY_PROD, DOTLYTE_KEY, or .dotlyte-keys
+```
+
+### Sensitive Value Masking
+
+```go
+config.ToMapRedacted()
+// map["db.host":"localhost" "db.password":"[REDACTED]"]
+
+dotlyte.BuildSensitiveSet(data, schemaKeys) // map[string]bool
+dotlyte.RedactMap(data, sensitiveKeys)       // replaces sensitive values
+```
+
+### Custom Source Plugin
+
+```go
+type Source interface {
+    Name() string
+    Load() (map[string]any, error)
+}
+
+// Example:
+type VaultSource struct{}
+func (v *VaultSource) Name() string { return "vault" }
+func (v *VaultSource) Load() (map[string]any, error) {
+    return map[string]any{"secret": "from-vault"}, nil
+}
+
+config, _ := dotlyte.Load(&dotlyte.LoadOptions{
+    Plugins: []dotlyte.Source{&VaultSource{}},
+})
+```
+
+### Error Types
+
+All errors embed `DotlyteError`:
+
+| Error Type | Code | Extra Fields |
+|---|---|---|
+| `*DotlyteError` | `DOTLYTE_ERROR` | `Key`, `Code`, `Message` |
+| `*MissingRequiredKeyError` | `MISSING_REQUIRED_KEY` | `SourcesChecked` |
+| `*ParseError` | `PARSE_ERROR` | `File` |
+| `*FileError` | `FILE_NOT_FOUND` | `File` |
+| `*ValidationError` | `VALIDATION_FAILED` | `Violations` |
+| `*InterpolationError` | `INTERPOLATION_CIRCULAR` / `INTERPOLATION_REQUIRED` | `Variable` |
+| `*DecryptionError` | `DECRYPTION_FAILED` etc. | — |
+
+```go
+config, err := dotlyte.Load(nil)
+if err != nil {
+    var fileErr *dotlyte.FileError
+    if errors.As(err, &fileErr) {
+        log.Printf("File not found: %s", fileErr.File)
+    }
 }
 ```
 
-### `DotlyteError`
+### Schema Types
 
 ```go
-type DotlyteError struct {
-    Key     string
-    Message string
+type DotlyteSchema map[string]*SchemaRule
+
+type SchemaRule struct {
+    Type      string         // "string","number","boolean","array","object"
+    Required  bool
+    Format    string         // "url","email","ip","ipv4","ipv6","hostname","port","uuid","date"
+    Pattern   string         // regex
+    Enum      []any
+    Min       *float64
+    Max       *float64
+    Default   any
+    Sensitive bool
+    Doc       string
+    Validator func(any) bool // custom validation
 }
 
-func (e *DotlyteError) Error() string {
-    return e.Message
+type SchemaViolation struct {
+    Key     string
+    Message string
+    Rule    string  // "required","type","format","enum","min","max","pattern","validator","strict"
 }
 ```
 
@@ -120,14 +305,17 @@ import (
     "log"
     "net/http"
 
-    "github.com/dotlyte/dotlyte-go"
+    dotlyte "github.com/dotlyte-io/dotlyte/langs/go"
 )
 
 func main() {
-    config := dotlyte.Load(&dotlyte.LoadOptions{
+    config, err := dotlyte.Load(&dotlyte.LoadOptions{
         Prefix: "APP_",
         Env:    "production",
     })
+    if err != nil {
+        log.Fatal(err)
+    }
 
     port := config.Get("port", "8080")
 
@@ -136,48 +324,58 @@ func main() {
         w.Write([]byte("Hello, DOTLYTE!"))
     })
 
-    log.Printf("Listening on :%s", port)
-    log.Fatal(http.ListenAndServe(":"+port, mux))
+    log.Printf("Listening on :%v", port)
+    log.Fatal(http.ListenAndServe(":"+port.(string), mux))
 }
 ```
 
 ### Gin / Echo / Fiber
 
 ```go
-config := dotlyte.Load(&dotlyte.LoadOptions{Prefix: "API_"})
+config, _ := dotlyte.Load(&dotlyte.LoadOptions{Prefix: "API_"})
 
 r := gin.Default()
-r.Run(":" + config.Get("port", "8080"))
-```
-
-### Struct Binding
-
-<Callout type="info">
-  DOTLYTE returns string values from `Get()`. Use Go's `strconv` to convert types, or rely on DOTLYTE's type coercion when values come from YAML/JSON sources.
-</Callout>
-
-```go
-import "strconv"
-
-port, _ := strconv.Atoi(config.Get("port", "8080"))
-debug, _ := strconv.ParseBool(config.Get("debug", "false"))
+r.Run(":" + config.Get("port", "8080").(string))
 ```
 
 ### Testing
 
 ```go
 func TestConfig(t *testing.T) {
-    config := dotlyte.Load(&dotlyte.LoadOptions{
-        Defaults: map[string]interface{}{
+    config, err := dotlyte.Load(&dotlyte.LoadOptions{
+        Defaults: map[string]any{
             "database.host": "localhost",
-            "database.port": "5432",
+            "database.port": 5432,
         },
     })
+    if err != nil {
+        t.Fatal(err)
+    }
 
-    if got := config.Get("database.host", ""); got != "localhost" {
-        t.Errorf("expected localhost, got %s", got)
+    if got := config.Get("database.host"); got != "localhost" {
+        t.Errorf("expected localhost, got %v", got)
     }
 }
+```
+
+## File Structure
+
+```
+langs/go/
+├── loader.go          # Load() function, LoadOptions, file discovery
+├── config.go          # Config struct & all methods
+├── errors.go          # Error types hierarchy
+├── coercion.go        # Type coercion (Coerce, CoerceMap)
+├── merger.go          # DeepMerge
+├── parser_dotenv.go   # .env file parser
+├── parser_env.go      # OS environment vars parser
+├── parser_json.go     # JSON parser
+├── parser_yaml.go     # YAML parser
+├── parser_toml.go     # TOML parser
+├── doc.go             # Package documentation
+├── go.mod
+├── loader_test.go     # Integration tests
+└── coercion_test.go   # Coercion tests
 ```
 
 ## Build & Test
@@ -194,18 +392,4 @@ go test -race ./...
 # Lint
 gofmt -l .
 go vet ./...
-```
-
-## Project Structure
-
-```
-langs/go/
-├── dotlyte.go        # Load() function
-├── config.go         # Config type
-├── coercion.go       # Type coercion
-├── errors.go         # DotlyteError
-├── parsers.go        # File parsers (.env, YAML, JSON, TOML)
-├── dotlyte_test.go   # Tests
-├── go.mod
-└── go.sum
 ```

@@ -6,11 +6,11 @@ icon: SlidersHorizontal
 
 All options are **optional**. Calling `load()` with no arguments uses sensible defaults.
 
-## Options
+## Core Options
 
 ### `files`
 
-**Type:** `string[]` | **Default:** `undefined`
+**Type:** `string[]` | **Default:** `null`
 
 Explicit list of files to load. When specified, automatic file discovery is skipped.
 
@@ -20,14 +20,14 @@ config = load(files=["config/app.env", "config/database.env"])
 
 ### `prefix`
 
-**Type:** `string` | **Default:** `undefined`
+**Type:** `string` | **Default:** `null`
 
 Strip this prefix from environment variable names. The prefix and separator (`_`) are removed, and the remaining key is lowercased.
 
 ```python
 # Given: MYAPP_DB_HOST=localhost
 config = load(prefix="MYAPP")
-config.db_host  # "localhost"
+config.get("db_host")  # "localhost"
 ```
 
 ### `defaults`
@@ -49,7 +49,7 @@ config = load(defaults={
 
 ### `sources`
 
-**Type:** `string[]` | **Default:** `undefined`
+**Type:** `string[]` | **Default:** `null`
 
 Custom source loading order. When specified, only the listed sources are loaded in the given order.
 
@@ -62,7 +62,7 @@ config = load(sources=["defaults", "env"])
 
 ### `env`
 
-**Type:** `string` | **Default:** `undefined`
+**Type:** `string` | **Default:** `null`
 
 Environment name. When specified, environment-specific files are also loaded:
 
@@ -76,21 +76,154 @@ config = load(env="production")
 # Also loads: config.production.yaml, .env.production, etc.
 ```
 
+### `overrides`
+
+**Type:** `dict` / `Record<string, unknown>` | **Default:** `{}`
+
+Values applied with the **highest priority** — they override everything, including environment variables. Useful for CLI flags or programmatic overrides.
+
+```python
+config = load(
+    defaults={"port": 3000},
+    overrides={"port": 9999},
+)
+config.get("port")  # 9999 (overrides always win)
+```
+
+## Schema & Validation Options
+
+### `schema`
+
+**Type:** `dict<string, SchemaRule>` | **Default:** `null`
+
+Define validation rules, default values, type constraints, and sensitivity markers per key.
+
+```python
+config = load(schema={
+    "port": {"type": "integer", "required": True, "min": 1, "max": 65535},
+    "host": {"type": "string", "required": True, "format": "ipv4"},
+    "api_key": {"type": "string", "required": True, "sensitive": True},
+    "log_level": {"type": "string", "enum": ["debug", "info", "warn", "error"], "default": "info"},
+})
+```
+
+Schema rule fields: `type`, `required`, `format`, `pattern`, `enum`/`enum_values`, `min`, `max`, `default`/`default_value`, `sensitive`, `doc`.
+
+### `strict`
+
+**Type:** `bool` | **Default:** `false`
+
+When `true`, validation rejects keys in the config that are **not defined** in the schema. Useful for catching typos.
+
+```python
+config = load(
+    schema={"port": {"type": "integer"}},
+    strict=True,
+)
+# Throws ValidationError if config contains keys not in the schema
+```
+
+## Interpolation & Encryption Options
+
+### `interpolate_vars` / `interpolateVars`
+
+**Type:** `bool` | **Default:** `true`
+
+Enable `${VAR}` variable interpolation in config values.
+
+```bash
+# .env
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-default_value}
+REQUIRED=${SECRET:?error message}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+Set to `false` to treat `${...}` as literal text.
+
+### `encryption_key` / `encryptionKey`
+
+**Type:** `string` | **Default:** `null`
+
+A 64-character hex string (AES-256 key) for decrypting `ENC[...]` values. If not provided, the key is resolved from: `DOTLYTE_KEY_{ENV}` → `DOTLYTE_KEY` → `.dotlyte-keys` file.
+
+```python
+config = load(encryption_key="aabbccddee...")
+```
+
+## File Discovery Options
+
+### `find_up` / `findUp`
+
+**Type:** `bool` | **Default:** `false`
+
+Walk up parent directories searching for config files, stopping when a root marker is found.
+
+### `root_markers` / `rootMarkers`
+
+**Type:** `string[]` | **Default:** `[".git", "package.json", "go.mod", "Cargo.toml", ".dotlyte"]`
+
+Files or directories that mark the project root when using `find_up`.
+
+### `cwd`
+
+**Type:** `string` | **Default:** `null` (uses process working directory)
+
+Override the working directory for file discovery.
+
+```python
+config = load(cwd="/app/config", find_up=True)
+```
+
+## Advanced Options
+
+### `allow_all_env_vars` / `allowAllEnvVars`
+
+**Type:** `bool` | **Default:** `false`
+
+By default, DOTLYTE filters environment variables to avoid loading system variables. Set to `true` to include all env vars.
+
+### `debug`
+
+**Type:** `bool` | **Default:** `false`
+
+Enable debug logging to see which files are discovered, which sources are loaded, and how values are merged.
+
+### `watch`
+
+**Type:** `bool` | **Default:** `false`
+
+**Supported in:** Python, JavaScript, Go, Rust, Java, Ruby (not PHP, not .NET)
+
+Start a file watcher that reloads config when source files change. Use `config.on_change()` to register callbacks.
+
+```python
+config = load(watch=True)
+config.on_change(lambda old, new: print("Config reloaded"))
+config.close()  # Stop watching when done
+```
+
+### `debounce_ms` / `debounceMs`
+
+**Type:** `int` | **Default:** `500`
+
+Milliseconds to debounce file change events when `watch` is enabled.
+
 ## Language-Specific Signatures
 
-<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "C#"]}>
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
   <Tab value="Python">
     ```python
     def load(
-        files: list[str] | None = None,
-        prefix: str | None = None,
-        defaults: dict | None = None,
-        sources: list[str] | None = None,
-        env: str | None = None,
+        *,  # keyword-only
+        files=None, prefix=None, defaults=None, sources=None, env=None,
+        schema=None, strict=False, interpolate_vars=True, overrides=None,
+        debug=False, find_up=False, root_markers=None, cwd=None,
+        allow_all_env_vars=False, watch=False, debounce_ms=500,
+        encryption_key=None,
     ) -> Config
     ```
-
-    Python uses keyword arguments directly instead of an options object.
   </Tab>
   <Tab value="JavaScript">
     ```typescript
@@ -100,22 +233,42 @@ config = load(env="production")
       defaults?: Record<string, unknown>;
       sources?: string[];
       env?: string;
+      schema?: Record<string, SchemaRule>;
+      strict?: boolean;
+      interpolateVars?: boolean;   // default: true
+      overrides?: Record<string, unknown>;
+      debug?: boolean;
+      findUp?: boolean;
+      rootMarkers?: string[];
+      cwd?: string;
+      allowAllEnvVars?: boolean;
+      watch?: boolean;
+      debounceMs?: number;         // default: 500
+      encryptionKey?: string;
     }
-
-    function load(options?: LoadOptions): Config;
     ```
   </Tab>
   <Tab value="Go">
     ```go
     type LoadOptions struct {
-        Files    []string
-        Prefix   string
-        Defaults map[string]any
-        Sources  []string
-        Env      string
+        Files           []string
+        Prefix          string
+        Defaults        map[string]any
+        Sources         []string
+        Env             string
+        Schema          map[string]SchemaRule
+        Strict          bool
+        InterpolateVars bool            // default true
+        Overrides       map[string]any
+        Debug           bool
+        FindUp          bool
+        RootMarkers     []string
+        Cwd             string
+        AllowAllEnvVars bool
+        Watch           bool
+        DebounceMs      int             // default 500
+        EncryptionKey   string
     }
-
-    func Load(opts *LoadOptions) *Config
     ```
   </Tab>
   <Tab value="Rust">
@@ -126,33 +279,104 @@ config = load(env="production")
         pub defaults: Option<HashMap<String, Value>>,
         pub sources: Option<Vec<String>>,
         pub env: Option<String>,
+        pub schema: Option<HashMap<String, SchemaRule>>,
+        pub strict: bool,
+        pub interpolate_vars: bool,       // default true
+        pub overrides: Option<HashMap<String, Value>>,
+        pub debug: bool,
+        pub find_up: bool,
+        pub root_markers: Option<Vec<String>>,
+        pub cwd: Option<String>,
+        pub allow_all_env_vars: bool,
+        pub watch: bool,
+        pub debounce_ms: u64,             // default 500
+        pub encryption_key: Option<String>,
     }
-
-    pub fn load(opts: Option<LoadOptions>) -> Result<Config, DotlyteError>;
     ```
   </Tab>
   <Tab value="Java">
     ```java
-    public class LoadOptions {
-        private List<String> files;
-        private String prefix;
-        private Map<String, Object> defaults;
-        private List<String> sources;
-        private String env;
-        // Builder pattern for construction
-    }
+    LoadOptions.builder()
+        .files(List.of(".env", "config.yaml"))
+        .prefix("APP_")
+        .defaults(Map.of("port", 3000))
+        .sources(List.of("env", "dotenv", "yaml"))
+        .env("production")
+        .schema(Map.of("port", new SchemaRule(...)))
+        .strict(false)
+        .interpolateVars(true)
+        .overrides(Map.of())
+        .debug(false)
+        .findUp(false)
+        .rootMarkers(List.of(".git"))
+        .cwd("/app")
+        .allowAllEnvVars(false)
+        .watch(false)
+        .debounceMs(500)
+        .encryptionKey(null)
+        .build();
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    config = Dotlyte.load(
+      files: [".env"],
+      prefix: "APP_",
+      defaults: { port: 3000 },
+      env: "production",
+      schema: { port: { type: "integer", required: true } },
+      strict: false,
+      interpolate_vars: true,
+      overrides: {},
+      debug: false,
+      find_up: false,
+      root_markers: [".git"],
+      cwd: nil,
+      allow_all_env_vars: false,
+      watch: false,
+      debounce_ms: 500,
+      encryption_key: nil,
+    )
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    $options = new LoadOptions();
+    $options->files = ['.env', 'config.json'];
+    $options->prefix = 'APP_';
+    $options->defaults = ['port' => 3000];
+    $options->env = 'production';
+    $options->schema = ['port' => new SchemaRule(type: 'integer')];
+    $options->strict = false;
+    $options->interpolateVars = true;
+    $options->overrides = [];
+    $options->debug = false;
+    $options->findUp = false;
+    $options->rootMarkers = ['.git'];
+    $options->cwd = null;
+    $options->allowAllEnvVars = false;
+    // Note: PHP does not support watch/debounceMs
     ```
   </Tab>
   <Tab value="C#">
     ```csharp
-    public class LoadOptions
+    new LoadOptions
     {
-        public List<string>? Files { get; set; }
-        public string? Prefix { get; set; }
-        public Dictionary<string, object?>? Defaults { get; set; }
-        public List<string>? Sources { get; set; }
-        public string? Env { get; set; }
-    }
+        Files = [".env", "config.json"],
+        Prefix = "APP_",
+        Defaults = new() { ["port"] = 3000 },
+        Env = "production",
+        Schema = new() { ["port"] = new SchemaRule { Type = "integer" } },
+        Strict = false,
+        InterpolateVars = true,   // default
+        Overrides = new(),
+        Debug = false,
+        FindUp = false,
+        RootMarkers = [".git"],
+        Cwd = null,
+        AllowAllEnvVars = false,
+        // Note: .NET does not support Watch/DebounceMs
+    };
     ```
   </Tab>
 </Tabs>

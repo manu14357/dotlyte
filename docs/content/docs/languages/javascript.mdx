@@ -29,9 +29,9 @@ import { load } from "dotlyte";
 
 const config = load();
 
-// Typed access
-console.log(config.get("database.host")); // "localhost"
-console.log(config.get("database.port")); // 5432
+// Dot-notation access (via Proxy)
+console.log(config.database.host); // "localhost"
+console.log(config.database.port); // 5432
 ```
 
 ## API Reference
@@ -40,7 +40,6 @@ console.log(config.get("database.port")); // 5432
 
 ```typescript
 import { load } from "dotlyte";
-import type { LoadOptions } from "dotlyte";
 
 // Basic
 const config = load();
@@ -56,28 +55,62 @@ const config = load({
 
 **Returns:** `Config` object.
 
+### `LoadOptions`
+
+```typescript
+import type { LoadOptions } from "dotlyte";
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `files` | `string[]` | — | Explicit config file paths |
+| `prefix` | `string` | — | Env var prefix to strip (`APP_DB_HOST` → `db.host`) |
+| `defaults` | `Record<string, unknown>` | — | Default values (lowest priority) |
+| `sources` | `string[]` | — | Custom source order (`"env"`, `"dotenv"`, `"yaml"`, `"json"`, `"toml"`, `"defaults"`) |
+| `env` | `string` | — | Environment name (loads `.env.{env}`, `config.{env}.yaml`) |
+| `schema` | `DotlyteSchema` | — | Schema rules for load-time validation |
+| `strict` | `boolean` | `false` | Reject unknown keys not in schema |
+| `plugins` | `Source[]` | — | Custom source plugins |
+| `watch` | `boolean` | `false` | Enable file watching / hot-reload |
+| `debounceMs` | `number` | `100` | Watcher debounce interval (ms) |
+| `interpolate` | `boolean` | `true` | Enable `${VAR}` interpolation |
+| `override` | `boolean` | `false` | `.env` files override OS env vars |
+| `debug` | `boolean` | `false` | Debug logging of source resolution |
+| `findUp` | `boolean` | `false` | Walk up parent dirs for config files |
+| `rootMarkers` | `string[]` | `[".git", "package.json", ...]` | Project-root markers for `findUp` |
+| `cwd` | `string` | `process.cwd()` | Base directory for file resolution |
+
 ### `Config`
 
 #### `config.get(key, defaultValue?)`
 
 ```typescript
 const port = config.get("server.port", 8080);     // number
-const name = config.get("app.name", "myapp");       // string
-const missing = config.get("nope");                  // undefined
+const name = config.get("app.name", "myapp");      // string
+const missing = config.get("nope");                // undefined
 ```
 
 #### `config.require(key)`
 
 ```typescript
-import { DotlyteError } from "dotlyte";
+import { MissingRequiredKeyError } from "dotlyte";
 
 try {
   const dbUrl = config.require("database_url");
 } catch (e) {
-  if (e instanceof DotlyteError) {
-    console.error(`Missing key: ${e.key}`);
+  if (e instanceof MissingRequiredKeyError) {
+    console.error(`Missing: ${e.key}`);
+    console.error(`Checked: ${e.sourcesChecked}`);
   }
 }
+```
+
+#### `config.requireKeys(...keys)`
+
+Batch-require multiple keys. Returns `Record<string, unknown>`:
+
+```typescript
+const { host, port, name } = config.requireKeys("db.host", "db.port", "db.name");
 ```
 
 #### `config.has(key)`
@@ -88,42 +121,211 @@ if (config.has("redis.host")) {
 }
 ```
 
-### `LoadOptions`
+#### `config.scope(prefix)`
+
+Create a scoped sub-config:
 
 ```typescript
-interface LoadOptions {
-  files?: string[];                  // Explicit config files
-  prefix?: string;                   // Env var prefix to strip
-  defaults?: Record<string, unknown>;// Default values
-  sources?: string[];                // Custom source order
-  env?: string;                      // Environment name
+const db = config.scope("database");
+console.log(db.get("host")); // same as config.get("database.host")
+```
+
+#### Dot-Notation Access
+
+Config objects support dynamic property access via Proxy:
+
+```typescript
+config.database.host       // "localhost"
+config.server.port         // 8080
+```
+
+#### Serialization & Export
+
+```typescript
+config.keys();              // Flat dot-notation keys
+config.toFlatMap();         // { "db.host": "localhost", "db.port": 5432, ... }
+config.toObject();          // Deep nested object (mutable copy)
+config.toObjectRedacted();  // Sensitive values → "***"
+config.toJSON();            // Same as toObjectRedacted() (used by JSON.stringify)
+config.toString();          // Human-readable with redaction
+config.writeTo("out.json"); // Write to file ("json" | "env" | "yaml" | "toml")
+```
+
+#### Typed Access
+
+```typescript
+const port = config.getTyped<number>("port", 3000);
+const all = config.as<MyConfigInterface>();
+```
+
+#### Schema Validation
+
+```typescript
+import type { DotlyteSchema } from "dotlyte";
+
+const schema: DotlyteSchema = {
+  port: { type: "integer", required: true, min: 1, max: 65535 },
+  host: { type: "string", required: true },
+};
+
+const violations = config.validate(schema);
+config.assertValid(schema); // throws ValidationError
+```
+
+#### File Watching (Hot-Reload)
+
+When `watch: true` is passed to `load()`:
+
+```typescript
+const config = load({ watch: true, debounceMs: 200 });
+
+config.onChange((newConfig) => console.log("Config changed!"));
+config.onKeyChange("database.host", (oldVal, newVal) => {
+  console.log(`${oldVal} → ${newVal}`);
+});
+config.onError((err) => console.error("Watch error:", err));
+
+// When done:
+config.close();
+```
+
+### Variable Interpolation
+
+Values can reference other config keys and env vars:
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}       # default if NAME is missing
+REQUIRED=${SECRET:?must set}  # error if SECRET is missing
+LITERAL=$$NOT_INTERPOLATED    # escape with $$
+```
+
+```typescript
+import { interpolate } from "dotlyte";
+
+// Also available as standalone function
+const result = interpolate(template, variables);
+```
+
+### Encryption (AES-256-GCM)
+
+```typescript
+import {
+  generateKey, encryptValue, decryptValue,
+  encryptFile, decryptFile
+} from "dotlyte";
+
+const key = generateKey();   // 32-byte hex key
+
+// Value-level
+const encrypted = encryptValue("s3cret", key);  // "ENC[...]"
+const plain = decryptValue(encrypted, key);       // "s3cret"
+
+// File-level
+encryptFile(".env", ".env.enc", key);
+decryptFile(".env.enc", ".env.dec", key);
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `load()`.
+
+### Sensitive Value Masking
+
+```typescript
+import { REDACTED, redactObject, buildSensitiveSet } from "dotlyte";
+
+config.toObjectRedacted();
+// { "db.host": "localhost", "db.password": "***" }
+```
+
+### Error Types
+
+All errors extend `DotlyteError` (which extends `Error`):
+
+| Error Class | Code | Extra Properties |
+|---|---|---|
+| `DotlyteError` | `DOTLYTE_ERROR` | `key`, `code` |
+| `MissingRequiredKeyError` | `MISSING_REQUIRED_KEY` | `sourcesChecked` |
+| `ParseError` | `PARSE_ERROR` | `filePath` |
+| `FileError` | `FILE_NOT_FOUND` | `filePath` |
+| `ValidationError` | `VALIDATION_ERROR` | `violations` |
+| `InterpolationError` | `INTERPOLATION_ERROR` | — |
+| `DecryptionError` | `DECRYPTION_ERROR` | `filePath` |
+
+```typescript
+import { DotlyteError, MissingRequiredKeyError } from "dotlyte";
+
+try {
+  config.require("missing");
+} catch (e) {
+  if (e instanceof MissingRequiredKeyError) {
+    console.error(e.code);            // "MISSING_REQUIRED_KEY"
+    console.error(e.key);             // "missing"
+    console.error(e.sourcesChecked);  // [".env", "config.yaml", ...]
+  }
 }
 ```
 
-### `DotlyteError`
+### Custom Source Plugin
 
 ```typescript
-import { DotlyteError } from "dotlyte";
+import type { Source } from "dotlyte";
 
-class DotlyteError extends Error {
-  readonly key?: string;
-  readonly message: string;
-}
+const mySource: Source = {
+  name: "my-source",
+  parse() {
+    return { custom: "value" };
+  },
+};
+
+const config = load({ plugins: [mySource] });
+```
+
+### Public Exports
+
+```typescript
+// Core
+import { load, Config } from "dotlyte";
+import type { LoadOptions, Source } from "dotlyte";
+
+// Errors
+import {
+  DotlyteError, MissingRequiredKeyError, ParseError,
+  FileError, ValidationError, InterpolationError, DecryptionError
+} from "dotlyte";
+
+// Schema
+import { validateSchema, assertValid, applySchemaDefaults, getSensitiveKeys } from "dotlyte";
+import type { DotlyteSchema, SchemaRule, SchemaViolation } from "dotlyte";
+
+// Coercion
+import { coerce, coerceObject } from "dotlyte";
+
+// Interpolation
+import { interpolate } from "dotlyte";
+
+// Encryption
+import { encryptValue, decryptValue, encryptFile, decryptFile, generateKey } from "dotlyte";
+
+// Masking
+import { REDACTED, redactObject, buildSensitiveSet, formatRedacted } from "dotlyte";
+
+// Watcher
+import { ConfigWatcher } from "dotlyte";
+import type { ChangeCallback, KeyChangeCallback, ErrorCallback } from "dotlyte";
 ```
 
 ## TypeScript Support
 
-DOTLYTE ships with full TypeScript declarations. The package uses ESM with `.js` extension imports (standard `moduleResolution: "bundler"` convention).
+DOTLYTE ships with full TypeScript declarations. Both ESM and CJS outputs are generated via `tsup`:
 
 ```typescript
-import { load, Config, LoadOptions, DotlyteError } from "dotlyte";
+import { load, Config } from "dotlyte";
+import type { LoadOptions, DotlyteSchema, SchemaRule } from "dotlyte";
 
 const config: Config = load();
 ```
-
-<Callout type="info">
-  DOTLYTE's TypeScript build uses `tsup` for bundling. Both ESM and CJS outputs are generated, so the package works in all Node.js environments.
-</Callout>
 
 ## Patterns
 
@@ -171,19 +373,28 @@ const fastify = Fastify({
 fastify.listen({ port: config.get("port", 3000) });
 ```
 
-### Environment-Specific Loading
+## File Structure
 
-```typescript
-const config = load({
-  env: process.env.NODE_ENV ?? "development",
-  defaults: {
-    log_level: "info",
-    port: 3000,
-  },
-});
-
-// Loads .env.development (or .env.production, etc.)
-// Then merges with defaults
+```
+langs/javascript/src/
+├── index.ts           # Public re-exports
+├── loader.ts          # load() function & LoadOptions
+├── config.ts          # Config class
+├── errors.ts          # Error hierarchy
+├── coercion.ts        # Type coercion engine
+├── merger.ts          # Deep merge logic
+├── interpolation.ts   # ${VAR} interpolation
+├── encryption.ts      # AES-256-GCM encrypt/decrypt
+├── validator.ts       # Schema validation
+├── masking.ts         # Sensitive value redaction
+├── watcher.ts         # File watching / hot-reload
+└── parsers/
+    ├── defaults.ts    # Defaults source
+    ├── dotenv.ts      # .env parser
+    ├── env.ts         # OS environment vars
+    ├── json.ts        # JSON parser
+    ├── toml.ts        # TOML parser
+    └── yaml.ts        # YAML parser
 ```
 
 ## Build & Test
@@ -205,27 +416,4 @@ pnpm lint
 
 # Type check
 pnpm typecheck
-```
-
-## Project Structure
-
-```
-langs/javascript/
-├── src/
-│   ├── index.ts          # Public exports
-│   ├── loader.ts         # Core load() function
-│   ├── config.ts         # Config class
-│   ├── errors.ts         # DotlyteError
-│   ├── coercion.ts       # Type coercion engine
-│   ├── types.ts          # TypeScript interfaces
-│   └── parsers/
-│       ├── env.ts        # .env file parser
-│       ├── yaml.ts       # YAML parser
-│       ├── json.ts       # JSON parser
-│       ├── toml.ts       # TOML parser
-│       └── defaults.ts   # Defaults source
-├── test/                 # Vitest tests
-├── tsconfig.json
-├── tsup.config.ts
-└── package.json
 ```

@@ -10,14 +10,14 @@ icon: Coffee
   <Tab value="Gradle (Kotlin DSL)">
     ```kotlin
     dependencies {
-        implementation("com.dotlyte:dotlyte:0.1.1")
+        implementation("dev.dotlyte:dotlyte:0.1.1")
     }
     ```
   </Tab>
   <Tab value="Maven">
     ```xml
     <dependency>
-        <groupId>com.dotlyte</groupId>
+        <groupId>dev.dotlyte</groupId>
         <artifactId>dotlyte</artifactId>
         <version>0.1.1</version>
     </dependency>
@@ -29,19 +29,20 @@ icon: Coffee
 
 - Java **17+**
 - Gradle 8+ or Maven 3.8+
+- Dependencies: SnakeYAML (YAML), Gson (JSON)
 
 ## Quick Start
 
 ```java
-import com.dotlyte.Dotlyte;
-import com.dotlyte.Config;
+import dev.dotlyte.Dotlyte;
+import dev.dotlyte.Config;
 
 public class App {
     public static void main(String[] args) {
         Config config = Dotlyte.load();
 
-        String host = config.get("database.host", "localhost");
-        int port = Integer.parseInt(config.get("database.port", "5432"));
+        Object host = config.get("database.host", "localhost");
+        int port = config.getInt("database.port", 5432);
 
         System.out.printf("DB: %s:%d%n", host, port);
     }
@@ -53,15 +54,15 @@ public class App {
 ### `Dotlyte.load(options?)`
 
 ```java
-import com.dotlyte.Dotlyte;
-import com.dotlyte.Config;
-import com.dotlyte.LoadOptions;
+import dev.dotlyte.Dotlyte;
+import dev.dotlyte.Config;
+import dev.dotlyte.LoadOptions;
 
 // Basic
 Config config = Dotlyte.load();
 
 // With options
-Config config = Dotlyte.load(new LoadOptions.Builder()
+Config config = Dotlyte.load(LoadOptions.builder()
     .files(List.of(".env", "config.yaml"))
     .prefix("APP_")
     .defaults(Map.of("port", 3000))
@@ -69,76 +70,215 @@ Config config = Dotlyte.load(new LoadOptions.Builder()
     .build());
 ```
 
-### `Config`
+### `LoadOptions`
 
-#### `get(String key, String defaultValue)`
+Built via `LoadOptions.builder()`:
 
 ```java
-String host = config.get("server.host", "0.0.0.0");
-String port = config.get("server.port", "8080");
-String missing = config.get("nope"); // null
+LoadOptions options = LoadOptions.builder()
+    .files(List.of(".env", "settings.yaml"))
+    .prefix("MYAPP_")
+    .defaults(Map.of("log_level", "info"))
+    .sources(List.of("env", "dotenv", "yaml"))
+    .env("staging")
+    .schema(schema)
+    .strict(true)
+    .interpolateVars(true)
+    .overrides(Map.of("key", "forced_value"))
+    .debug(true)
+    .findUp(true)
+    .rootMarkers(List.of(".git", "build.gradle.kts"))
+    .cwd("/path/to/project")
+    .allowAllEnvVars(false)
+    .watch(true)
+    .debounceMs(300)
+    .build();
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `files` | `List<String>` | — | Explicit config file paths |
+| `prefix` | `String` | — | Env var prefix to strip |
+| `defaults` | `Map<String, Object>` | — | Default values (lowest priority) |
+| `sources` | `List<String>` | — | Source order: `"env"`, `"dotenv"`, `"yaml"`, `"json"`, `"toml"`, `"defaults"` |
+| `env` | `String` | — | Environment name |
+| `schema` | `Map<String, SchemaRule>` | — | Validation rules |
+| `strict` | `boolean` | `false` | Reject unknown keys |
+| `interpolateVars` | `boolean` | `true` | Enable `${VAR}` interpolation |
+| `overrides` | `Map<String, Object>` | — | Highest priority values |
+| `debug` | `boolean` | `false` | Debug logging |
+| `findUp` | `boolean` | `false` | Walk up directories |
+| `rootMarkers` | `List<String>` | — | Project root markers |
+| `cwd` | `String` | — | Working directory |
+| `allowAllEnvVars` | `boolean` | `false` | Disable env var filtering |
+| `watch` | `boolean` | `false` | Enable file watching |
+| `debounceMs` | `int` | `300` | Watcher debounce (ms) |
+
+### `Config`
+
+#### `get(String key)` / `get(String key, Object defaultValue)`
+
+Returns `Object` (not `String`):
+
+```java
+Object host = config.get("server.host", "0.0.0.0");
+Object port = config.get("server.port", 8080);
+Object missing = config.get("nope"); // null
+```
+
+#### Typed Getters
+
+```java
+String host = config.getString("server.host", "0.0.0.0");
+int port = config.getInt("server.port", 8080);
+boolean debug = config.getBoolean("debug", false);
 ```
 
 #### `require(String key)`
 
+Returns `Object` or throws `MissingKeyException`:
+
 ```java
-import com.dotlyte.DotlyteException;
+import dev.dotlyte.DotlyteException.MissingKeyException;
 
 try {
-    String dbUrl = config.require("database_url");
-} catch (DotlyteException e) {
+    Object dbUrl = config.require("database_url");
+} catch (MissingKeyException e) {
     System.err.println("Missing: " + e.getKey());
+    System.err.println("Checked: " + e.getSourcesChecked());
 }
+```
+
+#### `requireKeys(String... keys)`
+
+Validate multiple keys at startup:
+
+```java
+config.requireKeys("db.host", "db.port", "db.name");
 ```
 
 #### `has(String key)`
 
 ```java
 if (config.has("redis.host")) {
-    setupRedis(config.require("redis.host"));
+    setupRedis(config);
 }
 ```
 
-### `LoadOptions`
+#### `scope(String prefix)`
+
+Create a scoped sub-config:
 
 ```java
-LoadOptions options = new LoadOptions.Builder()
-    .files(List.of(".env", "settings.yaml"))
-    .prefix("MYAPP_")
-    .defaults(Map.of("log_level", "info"))
-    .sources(List.of("env", "dotenv", "yaml"))
-    .env("staging")
-    .build();
+Config db = config.scope("database");
+Object host = db.get("host"); // same as config.get("database.host")
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `files` | `List<String>` | Explicit config file paths |
-| `prefix` | `String` | Env var prefix to strip |
-| `defaults` | `Map<String, Object>` | Default values |
-| `sources` | `List<String>` | Custom source load order |
-| `env` | `String` | Environment name |
-
-### `DotlyteException`
+#### Serialization & Export
 
 ```java
-public class DotlyteException extends RuntimeException {
-    public String getKey();
-    public String getMessage();
+config.keys();           // Set<String> — top-level keys
+config.toFlatKeys();     // Set<String> — all flattened dot-notation keys
+config.toFlatMap();      // Map<String, String> — flat key→string map
+config.toMap();          // Map<String, Object> — deep nested map
+config.toMapRedacted();  // Map<String, Object> — sensitive values → "[REDACTED]"
+config.toJson();         // String — JSON representation
+config.writeTo(Path.of("output.env")); // Writes in dotenv format
+```
+
+#### Schema Validation
+
+```java
+import dev.dotlyte.SchemaRule;
+
+Map<String, SchemaRule> schema = Map.of(
+    "port", new SchemaRule("integer", true, null, null, null, 1.0, 65535.0, null, false, null),
+    "host", new SchemaRule("string", true, null, null, null, null, null, null, false, null)
+);
+
+List<SchemaViolation> violations = config.validate();
+config.assertValid(); // throws ValidationException
+```
+
+#### File Watching (Hot-Reload)
+
+When `watch(true)` is set in LoadOptions, the Config includes a `ConfigWatcher`:
+
+```java
+Config config = Dotlyte.load(LoadOptions.builder()
+    .watch(true)
+    .debounceMs(200)
+    .build());
+
+// ConfigWatcher runs on a background thread
+// Config refreshes automatically when files change
+```
+
+### Variable Interpolation
+
+```properties
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+### Encryption (AES-256-GCM)
+
+```java
+import dev.dotlyte.Encryption;
+
+String key = Encryption.generateKey();
+
+String encrypted = Encryption.encryptValue("s3cret", key);  // "ENC[...]"
+String plain = Encryption.decryptValue(encrypted, key);       // "s3cret"
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `load()`.
+
+### Sensitive Value Masking
+
+```java
+config.toMapRedacted();
+// {"db.host": "localhost", "db.password": "[REDACTED]"}
+```
+
+Auto-detects sensitive keys matching patterns: `password`, `secret`, `token`, `api_key`, `private_key`, etc.
+
+### Error Types
+
+All extend `DotlyteException` (which extends `RuntimeException`):
+
+| Exception | Extra Properties |
+|---|---|
+| `DotlyteException` | `key` |
+| `DotlyteException.MissingKeyException` | `sourcesChecked` |
+| `DotlyteException.FileException` | `filePath` |
+| `DotlyteException.ValidationException` | `violations` |
+| `DotlyteException.InterpolationException` | — |
+| `DotlyteException.DecryptionException` | — |
+
+```java
+try {
+    config.require("missing");
+} catch (DotlyteException.MissingKeyException e) {
+    System.err.println(e.getKey());             // "missing"
+    System.err.println(e.getSourcesChecked());  // [".env", "config.yaml"]
+} catch (DotlyteException e) {
+    System.err.println(e.getMessage());
 }
 ```
-
-<Callout type="info">
-  `DotlyteException` extends `RuntimeException`, so it's an **unchecked exception**. You can catch it explicitly where needed without declaring it in method signatures.
-</Callout>
 
 ## Patterns
 
 ### Spring Boot
 
 ```java
-import com.dotlyte.Dotlyte;
-import com.dotlyte.Config;
+import dev.dotlyte.Dotlyte;
+import dev.dotlyte.Config;
+import dev.dotlyte.LoadOptions;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -147,7 +287,7 @@ public class AppConfig {
 
     @Bean
     public Config dotlyteConfig() {
-        return Dotlyte.load(new LoadOptions.Builder()
+        return Dotlyte.load(LoadOptions.builder()
             .prefix("APP_")
             .env(System.getenv("SPRING_PROFILES_ACTIVE"))
             .build());
@@ -158,13 +298,13 @@ public class AppConfig {
 ### Micronaut / Quarkus
 
 ```java
-Config config = Dotlyte.load(new LoadOptions.Builder()
+Config config = Dotlyte.load(LoadOptions.builder()
     .prefix("APP_")
     .env("production")
     .build());
 
-String dbUrl = config.require("datasource.url");
-String dbUser = config.require("datasource.username");
+Object dbUrl = config.require("datasource.url");
+Object dbUser = config.require("datasource.username");
 ```
 
 ### Validating at Startup
@@ -174,15 +314,33 @@ public class Main {
     public static void main(String[] args) {
         Config config = Dotlyte.load();
 
-        // Fail fast — validate all required keys at startup
-        String dbUrl = config.require("database_url");
-        String secret = config.require("jwt_secret");
-        String apiKey = config.require("api_key");
+        // Fail fast — validate required keys + schema at startup
+        config.requireKeys("database_url", "jwt_secret", "api_key");
+        config.assertValid();
 
-        // Application starts only if all config is present
-        new Application(dbUrl, secret, apiKey).run();
+        new Application(config).run();
     }
 }
+```
+
+## File Structure
+
+```
+langs/java/src/main/java/dev/dotlyte/
+├── Dotlyte.java           # Static load() entry point
+├── Config.java            # Config class with all access methods
+├── LoadOptions.java       # Builder-pattern options
+├── DotlyteException.java  # Exception hierarchy (inner classes)
+├── Coercion.java          # Type coercion engine
+├── Loader.java            # File loading logic
+├── Merger.java            # Deep merge
+├── Interpolation.java     # ${VAR} interpolation
+├── Encryption.java        # AES-256-GCM encrypt/decrypt
+├── Validator.java         # Schema validation
+├── Masking.java           # Sensitive value redaction
+├── ConfigWatcher.java     # File watching / hot-reload
+├── SchemaRule.java        # Schema rule definition
+└── SchemaViolation.java   # Validation violation
 ```
 
 ## Build & Test
@@ -198,24 +356,4 @@ cd langs/java
 
 # Clean build
 ./gradlew clean build
-```
-
-## Project Structure
-
-```
-langs/java/
-├── src/main/java/com/dotlyte/
-│   ├── Dotlyte.java          # Static load() entry point
-│   ├── Config.java            # Config class
-│   ├── LoadOptions.java       # Builder-pattern options
-│   ├── DotlyteException.java  # Exception class
-│   ├── Coercion.java          # Type coercion
-│   └── parsers/
-│       ├── EnvParser.java
-│       ├── YamlParser.java
-│       ├── JsonParser.java
-│       └── TomlParser.java
-├── src/test/java/com/dotlyte/ # JUnit 5 tests
-├── build.gradle.kts
-└── settings.gradle.kts
 ```

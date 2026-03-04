@@ -4,7 +4,7 @@ description: The main entry point — load configuration from all available sour
 icon: Play
 ---
 
-`load()` is the primary function in DOTLYTE. It discovers, parses, merges, and coerces configuration from all available sources and returns a `Config` object.
+`load()` is the primary function in DOTLYTE. It discovers, parses, merges, coerces, interpolates, decrypts, and validates configuration from all available sources and returns a `Config` object.
 
 ## Signature
 
@@ -12,11 +12,24 @@ icon: Play
   <Tab value="Python">
     ```python
     def load(
+        *,
         files: list[str] | None = None,
         prefix: str | None = None,
         defaults: dict | None = None,
         sources: list[str] | None = None,
         env: str | None = None,
+        schema: dict | None = None,
+        strict: bool = False,
+        interpolate_vars: bool = True,
+        overrides: dict | None = None,
+        debug: bool = False,
+        find_up: bool = False,
+        root_markers: list[str] | None = None,
+        cwd: str | None = None,
+        allow_all_env_vars: bool = False,
+        watch: bool = False,
+        debounce_ms: int = 500,
+        encryption_key: str | None = None,
     ) -> Config
     ```
   </Tab>
@@ -27,7 +40,7 @@ icon: Play
   </Tab>
   <Tab value="Go">
     ```go
-    func Load(opts *LoadOptions) *Config
+    func Load(opts *LoadOptions) (*Config, error)
     ```
   </Tab>
   <Tab value="Rust">
@@ -47,7 +60,7 @@ icon: Play
   </Tab>
   <Tab value="PHP">
     ```php
-    public static function load(array $options = []): Config
+    public static function load(?LoadOptions $options = null): Config
     ```
   </Tab>
   <Tab value="C#">
@@ -63,7 +76,7 @@ See [LoadOptions](/docs/api/options) for the full options reference.
 
 ## Return Value
 
-Returns a [`Config`](/docs/api/config) object with dot-notation access, `get()`, `require()`, and `has()`.
+Returns a [`Config`](/docs/api/config) object with dot-notation access, `get()`, `require()`, `has()`, schema validation, serialization, and more.
 
 ## Basic Usage
 
@@ -78,6 +91,7 @@ config = load(
     env="production",
     prefix="APP",
     defaults={"timeout": 30},
+    schema={"port": {"type": "integer", "required": True}},
 )
 ```
 
@@ -85,12 +99,18 @@ config = load(
 
 When called, `load()` performs these steps in order:
 
-1. **Discover** config files in the current working directory
+1. **Discover** config files in the current working directory (or walk up with `find_up`)
 2. **Parse** each file using the appropriate parser (dotenv, YAML, JSON, TOML)
-3. **Parse** environment variables (optionally filtered by prefix)
-4. **Merge** all sources by [priority order](/docs/priority-order)
-5. **Coerce** string values to proper types ([type coercion rules](/docs/type-coercion))
-6. **Return** a `Config` object
+3. **Parse** environment variables (optionally filtered by `prefix`)
+4. **Merge** all sources by [priority order](/docs/priority-order), with `overrides` on top
+5. **Interpolate** `${VAR}` references (unless `interpolate_vars=False`)
+6. **Apply schema defaults** from `schema` rules
+7. **Coerce** string values to proper types ([type coercion rules](/docs/type-coercion))
+8. **Decrypt** `ENC[...]` values if an encryption key is available
+9. **Validate** against `schema` rules (throw on failure if `strict`)
+10. **Detect** sensitive keys for masking
+11. **Start watcher** if `watch=True` (Python, JS, Go, Rust, Java, Ruby only)
+12. **Return** a `Config` object
 
 ## Examples
 
@@ -104,7 +124,7 @@ config = load()
 
 ```python
 config = load(env="staging")
-# Loads: config.staging.yaml, .env.staging, etc.
+# Also loads: config.staging.yaml, .env.staging, etc.
 ```
 
 ### With Prefix Stripping
@@ -114,14 +134,64 @@ config = load(prefix="MYAPP")
 # MYAPP_DB_HOST → db_host
 ```
 
-### With Explicit Defaults
+### With Schema Validation
 
 ```python
-config = load(defaults={
-    "port": 3000,
-    "host": "0.0.0.0",
-    "database": {"pool_size": 5}
-})
+config = load(
+    schema={
+        "port": {"type": "integer", "required": True, "min": 1, "max": 65535},
+        "host": {"type": "string", "required": True},
+        "api_key": {"type": "string", "sensitive": True},
+    },
+    strict=True,  # reject unknown keys
+)
+```
+
+### With Variable Interpolation
+
+```bash
+# .env
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+```
+
+```python
+config = load()
+config.get("api_endpoint")  # "https://api.example.com/v1"
+config.get("greeting")      # "World"
+```
+
+### With Encryption
+
+```python
+config = load(encryption_key="your-64-char-hex-key")
+# ENC[...] values in .env files are auto-decrypted
+```
+
+### With File Watching (Python, JS, Go, Rust, Java, Ruby)
+
+```python
+config = load(watch=True, debounce_ms=1000)
+config.on_change(lambda old, new: print("Config changed!"))
+# Call config.close() when done
+```
+
+### With Overrides
+
+```python
+config = load(
+    defaults={"port": 3000},
+    overrides={"port": 9999},  # highest priority — always wins
+)
+config.get("port")  # 9999
+```
+
+### With Find-Up Discovery
+
+```python
+config = load(find_up=True, root_markers=[".git", "pyproject.toml"])
+# Walks up from cwd until a root marker is found
 ```
 
 ### With Custom Sources

@@ -25,7 +25,7 @@ bundle install
 ### Requirements
 
 - Ruby **3.0+**
-- No required dependencies
+- Optional: `yaml` (stdlib), `json` (stdlib)
 
 ## Quick Start
 
@@ -40,7 +40,9 @@ puts config.database.port    # 5432
 
 ## API Reference
 
-### `Dotlyte.load(options = {})`
+### `Dotlyte.load(**options)`
+
+All parameters are **keyword arguments**:
 
 ```ruby
 # Basic
@@ -57,6 +59,28 @@ config = Dotlyte.load(
 
 **Returns:** `Dotlyte::Config` instance.
 
+#### Load Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `files` | `Array<String>` | `nil` | Explicit config file paths |
+| `prefix` | `String` | `nil` | Env var prefix to strip |
+| `defaults` | `Hash` | `nil` | Default values (lowest priority) |
+| `sources` | `Array<String>` | `nil` | Custom source load order |
+| `env` | `String` | `nil` | Environment name |
+| `schema` | `Hash` | `nil` | Schema rules for validation |
+| `strict` | `Boolean` | `false` | Reject unknown keys |
+| `interpolate_vars` | `Boolean` | `true` | Enable `${VAR}` interpolation |
+| `overrides` | `Hash` | `nil` | Highest priority values |
+| `debug` | `Boolean` | `false` | Debug logging |
+| `find_up` | `Boolean` | `false` | Walk up directories |
+| `root_markers` | `Array<String>` | `nil` | Project root markers |
+| `cwd` | `String` | `nil` | Working directory |
+| `allow_all_env_vars` | `Boolean` | `false` | Disable env var filtering |
+| `watch` | `Boolean` | `false` | Enable file watching |
+| `debounce_ms` | `Integer` | `100` | Watcher debounce (ms) |
+| `custom_sources` | `Array` | `nil` | Custom source plugins |
+
 ### `Config`
 
 #### `get(key, default = nil)`
@@ -69,21 +93,42 @@ missing = config.get("nope")    # nil
 
 #### `require(key)`
 
+Returns the value or raises `Dotlyte::MissingKeyError`:
+
 ```ruby
 begin
   db_url = config.require("database_url")
-rescue Dotlyte::Error => e
+rescue Dotlyte::MissingKeyError => e
   puts "Missing: #{e.key}"
+  puts "Checked: #{e.sources_checked}"
   exit 1
 end
 ```
 
-#### `has?(key)` / `key?(key)`
+#### `require_keys(*keys)`
+
+Batch-require multiple keys. Returns an `Array` of values:
+
+```ruby
+host, port, name = config.require_keys("db.host", "db.port", "db.name")
+```
+
+#### `has?(key)`
 
 ```ruby
 if config.has?("redis.host")
-  setup_redis(config.require("redis.host"))
+  setup_redis(config)
 end
+```
+
+#### `scope(prefix)`
+
+Create a scoped sub-config:
+
+```ruby
+db = config.scope("database")
+db.get("host")  # same as config.get("database.host")
+db.host          # dot-notation works too
 ```
 
 #### Dot-Notation (method_missing)
@@ -94,27 +139,106 @@ config.database.host
 config.get("database.host")
 ```
 
-#### Hash-Style Access
+Nested hashes return a new `Config`, allowing chained access.
+
+#### Serialization & Export
 
 ```ruby
-config["database.host"]   # Same as config.get("database.host")
+config.keys              # Array — top-level keys
+config.to_flat_keys      # Array<String> — all flattened keys
+config.to_flat_hash      # Hash — flat key→value
+config.to_h              # Hash — deep nested copy
+config.to_h_redacted     # Hash — sensitive values masked
+config.to_json           # String — JSON
+config.write_to("out.json")  # Write to file (JSON or YAML based on extension)
 ```
 
-### `LoadOptions`
-
-| Option | Type | Description |
-|---|---|---|
-| `files` | `Array<String>` | Explicit config file paths |
-| `prefix` | `String` | Env var prefix to strip |
-| `defaults` | `Hash` | Default values (lowest priority) |
-| `sources` | `Array<String>` | Custom source load order |
-| `env` | `String` | Environment name |
-
-### `Dotlyte::Error`
+#### Schema Validation
 
 ```ruby
-class Dotlyte::Error < StandardError
-  attr_reader :key
+schema = {
+  "port" => Dotlyte::SchemaRule.new(type: "integer", required: true, min: 1, max: 65535),
+  "host" => Dotlyte::SchemaRule.new(type: "string", required: true)
+}
+
+violations = config.validate(schema)
+violations.each { |v| puts "#{v.key}: #{v.message}" }
+
+config.assert_valid!(schema)  # raises Dotlyte::ValidationError
+```
+
+#### File Watching (Hot-Reload)
+
+When `watch: true`:
+
+```ruby
+config = Dotlyte.load(watch: true, debounce_ms: 200)
+
+# ConfigWatcher runs on a background thread
+# Config refreshes automatically when files change
+
+# When done:
+config.close
+```
+
+### Variable Interpolation
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+### Encryption (AES-256-GCM)
+
+```ruby
+require "dotlyte"
+
+key = Dotlyte::Encryption.generate_key
+
+encrypted = Dotlyte::Encryption.encrypt_value("s3cret", key)  # "ENC[...]"
+plain = Dotlyte::Encryption.decrypt_value(encrypted, key)       # "s3cret"
+
+Dotlyte::Encryption.encrypt_file(".env", ".env.enc", key)
+Dotlyte::Encryption.decrypt_file(".env.enc", ".env.dec", key)
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `load`.
+
+### Sensitive Value Masking
+
+```ruby
+config.to_h_redacted
+# {"db.host" => "localhost", "db.password" => "[REDACTED]"}
+```
+
+Sensitive keys are auto-detected by patterns: `password`, `secret`, `token`, `api_key`, etc.
+
+### Error Types
+
+All extend `Dotlyte::Error` (which extends `StandardError`):
+
+| Error Class | Extra Properties |
+|---|---|
+| `Dotlyte::Error` | `key` |
+| `Dotlyte::MissingKeyError` | `sources_checked` |
+| `Dotlyte::ParseError` | — |
+| `Dotlyte::FileError` | `file_path` |
+| `Dotlyte::ValidationError` | `violations` |
+| `Dotlyte::InterpolationError` | — |
+| `Dotlyte::DecryptionError` | — |
+
+```ruby
+begin
+  config.require("missing")
+rescue Dotlyte::MissingKeyError => e
+  puts e.key              # "missing"
+  puts e.sources_checked  # [".env", "config.yaml"]
+rescue Dotlyte::Error => e
+  puts e.message
 end
 ```
 
@@ -131,7 +255,6 @@ DOTLYTE_CONFIG = Dotlyte.load(
   env: Rails.env
 )
 
-# Use throughout the app
 Rails.application.config.x.dotlyte = DOTLYTE_CONFIG
 ```
 
@@ -185,14 +308,29 @@ RSpec.describe "Config loading" do
   end
 
   it "raises on missing required key" do
-    expect { config.require("missing") }.to raise_error(Dotlyte::Error)
+    expect { config.require("missing") }.to raise_error(Dotlyte::MissingKeyError)
   end
 end
 ```
 
-<Callout type="info">
-  DOTLYTE follows Ruby conventions: `snake_case` method names, `?` suffix for predicates, `Error` instead of `Exception` for error class name.
-</Callout>
+## File Structure
+
+```
+langs/ruby/lib/
+├── dotlyte.rb              # Main module and load()
+└── dotlyte/
+    ├── config.rb           # Config class
+    ├── coercion.rb         # Type coercion engine
+    ├── errors.rb           # Error hierarchy
+    ├── loader.rb           # File loading logic
+    ├── merger.rb           # Deep merge
+    ├── interpolation.rb    # ${VAR} interpolation
+    ├── encryption.rb       # AES-256-GCM encrypt/decrypt
+    ├── validator.rb        # Schema validation
+    ├── masking.rb          # Sensitive value redaction
+    ├── watcher.rb          # File watching / hot-reload
+    └── parsers/            # File format parsers
+```
 
 ## Build & Test
 
@@ -207,24 +345,4 @@ bundle exec rspec
 
 # Lint (RuboCop)
 bundle exec rubocop
-```
-
-## Project Structure
-
-```
-langs/ruby/
-├── lib/
-│   ├── dotlyte.rb         # Main module and load()
-│   ├── dotlyte/
-│   │   ├── config.rb      # Config class
-│   │   ├── coercion.rb    # Type coercion
-│   │   ├── error.rb       # Dotlyte::Error
-│   │   └── parsers/
-│   │       ├── env.rb
-│   │       ├── yaml.rb
-│   │       ├── json.rb
-│   │       └── toml.rb
-├── spec/                  # RSpec tests
-├── dotlyte.gemspec
-└── Gemfile
 ```
