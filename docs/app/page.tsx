@@ -1,8 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import {
   Globe,
-  RefreshCw,
   Layers,
   Package,
   Heart,
@@ -13,234 +15,376 @@ import {
   Gem,
   Cog,
   Shield,
+  ChevronRight,
+  Sparkles,
+  Zap,
+  Settings,
+  ArrowRight
 } from "lucide-react";
 
-const languages: { name: string; icon: ReactNode; color: string; href: string }[] = [
+const languages: { name: string; icon: ReactNode; color: string; href: string; bg: string }[] = [
   {
     name: "Python",
-    icon: <Terminal className="h-8 w-8" />,
+    icon: <Terminal className="h-6 w-6" />,
     color: "text-sky-500",
+    bg: "bg-sky-500/10",
     href: "/docs/languages/python",
   },
   {
     name: "JavaScript",
-    icon: <Code2 className="h-8 w-8" />,
+    icon: <Code2 className="h-6 w-6" />,
     color: "text-yellow-500",
+    bg: "bg-yellow-500/10",
     href: "/docs/languages/javascript",
   },
   {
     name: "Go",
-    icon: <Hexagon className="h-8 w-8" />,
+    icon: <Hexagon className="h-6 w-6" />,
     color: "text-cyan-500",
+    bg: "bg-cyan-500/10",
     href: "/docs/languages/go",
   },
   {
     name: "Rust",
-    icon: <Cog className="h-8 w-8" />,
+    icon: <Cog className="h-6 w-6" />,
     color: "text-orange-500",
+    bg: "bg-orange-500/10",
     href: "/docs/languages/rust",
   },
   {
     name: "Java",
-    icon: <Coffee className="h-8 w-8" />,
+    icon: <Coffee className="h-6 w-6" />,
     color: "text-red-500",
+    bg: "bg-red-500/10",
     href: "/docs/languages/java",
   },
   {
     name: "Ruby",
-    icon: <Gem className="h-8 w-8" />,
+    icon: <Gem className="h-6 w-6" />,
     color: "text-rose-500",
+    bg: "bg-rose-500/10",
     href: "/docs/languages/ruby",
   },
   {
     name: "PHP",
-    icon: <Shield className="h-8 w-8" />,
+    icon: <Shield className="h-6 w-6" />,
     color: "text-indigo-500",
+    bg: "bg-indigo-500/10",
     href: "/docs/languages/php",
   },
   {
     name: ".NET",
-    icon: <Globe className="h-8 w-8" />,
+    icon: <Globe className="h-6 w-6" />,
     color: "text-purple-500",
+    bg: "bg-purple-500/10",
     href: "/docs/languages/dotnet",
   },
 ];
 
-const features: { title: string; description: string; icon: ReactNode; color: string }[] = [
+const features = [
   {
     title: "One API, Every Language",
     description:
-      "Identical load() → Config interface across Python, JavaScript, Go, Rust, Java, Ruby, PHP, and .NET.",
-    icon: <Globe className="h-7 w-7" />,
-    color: "text-blue-500",
+      "Identical `load() → Config` interface across Python, JavaScript, Go, Rust, Java, Ruby, PHP, and .NET. Switch languages, not syntax.",
+    icon: <Globe className="h-5 w-5" />,
+    color: "text-fd-foreground",
+    bg: "bg-fd-muted",
+    border: "border-fd-border",
   },
   {
     title: "Automatic Type Coercion",
     description:
-      'Strings like "true", "8080", "3.14" are automatically coerced to booleans, integers, and floats.',
-    icon: <RefreshCw className="h-7 w-7" />,
-    color: "text-emerald-500",
+      "Strings like \"true\", \"8080\", and \"3.14\" from .env files are automatically and safely coerced to actual booleans, integers, and floats.",
+    icon: <Zap className="h-5 w-5" />,
+    color: "text-fd-foreground",
+    bg: "bg-fd-muted",
+    border: "border-fd-border",
   },
   {
-    title: "Layered Priority",
+    title: "Layered Priority Merging",
     description:
-      "Environment variables → .env files → YAML/JSON → TOML → defaults. Higher layers win.",
-    icon: <Layers className="h-7 w-7" />,
-    color: "text-amber-500",
+      "Environment Variables overrides .env files, which overrides YAML/JSON, which overrides TOML, giving you absolute control across environments.",
+    icon: <Layers className="h-5 w-5" />,
+    color: "text-fd-foreground",
+    bg: "bg-fd-muted",
+    border: "border-fd-border",
   },
   {
     title: "Zero Dependencies",
     description:
-      "Core implementations have zero required dependencies. Optional parsers degrade gracefully.",
-    icon: <Package className="h-7 w-7" />,
-    color: "text-violet-500",
+      "Core implementations have absolute zero required dependencies. Keep your deployments light. Optional parsers degrade gracefully.",
+    icon: <Package className="h-5 w-5" />,
+    color: "text-fd-foreground",
+    bg: "bg-fd-muted",
+    border: "border-fd-border",
   },
 ];
 
-export default function HomePage() {
-  return (
-    <main className="flex flex-col items-center">
-      {/* Hero */}
-      <section className="relative flex w-full flex-col items-center justify-center overflow-hidden px-6 py-24 text-center md:py-36">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-fd-primary/5 to-transparent" />
-        <div className="mb-4 inline-flex items-center rounded-full border border-fd-primary/20 bg-fd-primary/5 px-4 py-1.5 text-sm font-medium text-fd-primary">
-          v0.1.1 — Now in 8 Languages
-        </div>
-        <h1 className="max-w-4xl text-4xl font-extrabold tracking-tight md:text-6xl lg:text-7xl">
-          Your config.{" "}
-          <span className="bg-gradient-to-r from-fd-primary to-purple-500 bg-clip-text text-transparent">
-            Conducted.
-          </span>
-        </h1>
-        <p className="mt-6 max-w-2xl text-lg text-fd-muted-foreground md:text-xl">
-          One call to load <code className="rounded bg-fd-muted px-1.5 py-0.5 text-sm font-mono">.env</code>,
-          YAML, JSON, TOML, and environment variables — with automatic type coercion
-          and layered priority merging.
-        </p>
+const codeSamples: Record<string, string[]> = {
+  Python: [
+    "from dotlyte import load",
+    "",
+    "# One call. All your config loaded & merged.",
+    "config = load()",
+    "",
+    "port = config.port        # → 8080 (int)",
+    "debug = config.debug      # → True (bool)",
+    'host = config.get("db.host", "localhost")',
+  ],
+  JavaScript: [
+    "import { load } from \"dotlyte\";",
+    "",
+    "// One call. All your config loaded & merged.",
+    "const config = load();",
+    "",
+    "const port = config.port;     // 8080 (number)",
+    "const debug = config.debug;   // true (boolean)",
+    'const host = config.get("db.host", "localhost");',
+  ],
+  Go: [
+    'package main',
+    "",
+    'import "github.com/dotlyte/dotlyte/langs/go"',
+    "",
+    "func main() {",
+    "  cfg, _ := dotlyte.Load(nil)",
+    "  _ = cfg.Get(\"db.host\", \"localhost\")",
+    "}",
+  ],
+  Rust: [
+    "use dotlyte::load;",
+    "",
+    "fn main() {",
+    "    let config = load(None).unwrap();",
+    "    let port = config.get(\"port\", Some(\"8080\"));",
+    "    println!(\"{:?}\", port);",
+    "}",
+  ],
+  Java: [
+    "import io.dotlyte.Dotlyte;",
+    "",
+    "var config = Dotlyte.load();",
+    "var port = config.get(\"port\", 8080);",
+    "var debug = config.get(\"debug\", false);",
+  ],
+  Ruby: [
+    "require \"dotlyte\"",
+    "",
+    "config = Dotlyte.load",
+    "port = config.port",
+    "debug = config.debug",
+    "host = config.get(\"db.host\", \"localhost\")",
+  ],
+  PHP: [
+    "<?php",
+    "",
+    "use Dotlyte\\Dotlyte;",
+    "$config = Dotlyte::load();",
+    "$port = $config->get('port', 8080);",
+    "$host = $config->get('db.host', 'localhost');",
+  ],
+  ".NET": [
+    "using Dotlyte;",
+    "",
+    "var config = DotlyteLoader.Load();",
+    "var port = config.Get<int>(\"port\", 8080);",
+    "var debug = config.Get<bool>(\"debug\", false);",
+  ],
+};
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+export default function HomePage() {
+  const [activeLanguage, setActiveLanguage] = useState<keyof typeof codeSamples>("Python");
+
+  return (
+    <main className="flex min-h-screen flex-col items-center overflow-x-hidden bg-fd-background selection:bg-fd-primary/30">
+      {/* Dynamic Background */}
+      <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center bg-fd-background">
+        <div className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-purple-500/10 blur-[120px]" />
+        <div className="absolute top-[20%] right-[-10%] h-[400px] w-[400px] rounded-full bg-sky-400/10 blur-[100px]" />
+        <div className="absolute bottom-[-20%] left-[25%] h-[320px] w-[320px] rounded-full bg-orange-400/10 blur-[100px]" />
+      </div>
+
+      {/* Hero Section */}
+      <section className="relative w-full max-w-6xl px-6 pt-28 pb-20 text-center md:pt-40 md:pb-24">
+        <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 mx-auto flex flex-col items-center">
+          
           <Link
             href="/docs"
-            className="inline-flex items-center rounded-lg bg-fd-primary px-6 py-3 text-sm font-semibold text-fd-primary-foreground shadow-lg transition-all hover:opacity-90"
+            className="mb-7 flex items-center gap-2 rounded-full border border-fd-primary/30 bg-fd-primary/10 px-4 py-1.5 text-xs font-medium text-fd-primary"
           >
-            Get Started →
+            <Sparkles className="h-4 w-4" />
+            <span>
+              <span className="text-purple-600">DOTLYTE v0.1.1</span>
+              <span className="text-fd-muted-foreground"> · </span>
+              <span className="text-sky-600">MIT Open Source</span>
+              <span className="text-fd-muted-foreground"> · </span>
+              <span className="text-orange-500">8 Languages</span>
+            </span>
+            <ChevronRight className="h-4 w-4" />
           </Link>
-          <Link
-            href="/docs/api/load"
-            className="inline-flex items-center rounded-lg border border-fd-border bg-fd-card px-6 py-3 text-sm font-semibold transition-all hover:bg-fd-accent"
-          >
-            API Reference
-          </Link>
+
+          <h1 className="max-w-4xl text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl">
+            <span className="bg-gradient-to-r from-purple-600 via-sky-600 to-orange-500 bg-clip-text text-transparent">
+              Configuration, Mastered.
+            </span>
+          </h1>
+
+          <p className="mt-6 max-w-2xl text-sm font-medium text-fd-muted-foreground sm:text-base leading-relaxed">
+            One robust API to load <code className="rounded-md bg-fd-muted px-1.5 py-0.5 font-mono text-sm">.env</code>, YAML, JSON, TOML, and env vars. Featuring automatic type coercion and layered priority merging.
+          </p>
+
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/docs/getting-started"
+              className="inline-flex items-center gap-2 rounded-full bg-fd-foreground px-7 py-3 text-xs font-bold text-fd-background sm:text-sm"
+            >
+              <span>Start Building</span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/docs/api/load"
+              className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-7 py-3 text-xs font-bold text-fd-foreground sm:text-sm"
+            >
+              <Settings className="h-4 w-4 text-fd-muted-foreground" />
+              API Reference
+            </Link>
+          </div>
         </div>
 
-        {/* Code preview */}
-        <div className="mt-14 w-full max-w-2xl overflow-hidden rounded-xl border border-fd-border bg-fd-card shadow-2xl">
-          <div className="flex items-center gap-2 border-b border-fd-border px-4 py-3">
-            <div className="h-3 w-3 rounded-full bg-red-400" />
-            <div className="h-3 w-3 rounded-full bg-yellow-400" />
-            <div className="h-3 w-3 rounded-full bg-green-400" />
-            <span className="ml-2 text-xs text-fd-muted-foreground font-mono">app.py</span>
+        {/* Floating Code UI */}
+        <div className="animate-in fade-in slide-in-from-bottom-12 duration-1000 mt-16 mx-auto w-full max-w-3xl">
+          <div className="overflow-hidden rounded-2xl border-2 border-zinc-300 bg-white">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-fd-border bg-fd-muted px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-red-500/80" />
+                <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+                <div className="h-3 w-3 rounded-full bg-green-500/80" />
+                <span className="ml-2 text-[11px] font-semibold text-fd-foreground">{activeLanguage}</span>
+              </div>
+              <div className="flex max-w-[72%] flex-wrap justify-end gap-1.5">
+                {languages.map((lang) => (
+                  <button
+                    key={lang.name}
+                    type="button"
+                    onClick={() => setActiveLanguage(lang.name as keyof typeof codeSamples)}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] uppercase font-bold tracking-wider ${
+                      activeLanguage === lang.name
+                        ? "border-purple-300 bg-purple-100 text-purple-700"
+                        : "border-zinc-300 text-zinc-600"
+                    }`}
+                  >
+                    {lang.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Code Body */}
+            <div className="min-h-[250px] p-7 sm:p-8">
+              <pre className="whitespace-pre-wrap break-words text-left font-mono text-sm leading-loose text-zinc-900 sm:text-base">
+                <code>
+                  {codeSamples[activeLanguage].map((line, index) => (
+                    <span key={`${activeLanguage}-${index}`} className="block">
+                      {line === "" ? "\u00A0" : line}
+                    </span>
+                  ))}
+                </code>
+              </pre>
+            </div>
           </div>
-          <pre className="overflow-x-auto p-6 text-left text-sm leading-relaxed">
-            <code>
-              <span className="text-purple-400">from</span>{" "}
-              <span className="text-blue-400">dotlyte</span>{" "}
-              <span className="text-purple-400">import</span>{" "}
-              <span className="text-blue-400">load</span>{"\n\n"}
-              <span className="text-fd-muted-foreground"># One call. All your config.</span>{"\n"}
-              <span className="text-yellow-400">config</span>{" "}
-              <span className="text-fd-muted-foreground">=</span>{" "}
-              <span className="text-blue-400">load</span>
-              <span className="text-fd-muted-foreground">()</span>{"\n\n"}
-              <span className="text-yellow-400">config</span>
-              <span className="text-fd-muted-foreground">.</span>
-              <span className="text-green-400">port</span>
-              {"          "}
-              <span className="text-fd-muted-foreground"># → 8080 (auto-coerced int)</span>{"\n"}
-              <span className="text-yellow-400">config</span>
-              <span className="text-fd-muted-foreground">.</span>
-              <span className="text-green-400">debug</span>
-              {"         "}
-              <span className="text-fd-muted-foreground"># → True (auto-coerced bool)</span>{"\n"}
-              <span className="text-yellow-400">config</span>
-              <span className="text-fd-muted-foreground">.</span>
-              <span className="text-blue-400">get</span>
-              <span className="text-fd-muted-foreground">(</span>
-              <span className="text-green-400">&quot;db.host&quot;</span>
-              <span className="text-fd-muted-foreground">)</span>
-              {"  "}
-              <span className="text-fd-muted-foreground"># → &quot;localhost&quot; (nested access)</span>
-            </code>
-          </pre>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="w-full max-w-6xl px-6 py-20">
-        <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
-          Why DOTLYTE?
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-center text-fd-muted-foreground">
-          Stop writing config boilerplate. DOTLYTE gives you a universal, type-safe
-          configuration API that works the same way in every language.
-        </p>
-        <div className="mt-14 grid gap-6 md:grid-cols-2">
+      {/* Languages Banner */}
+      <section className="w-full border-y border-fd-border/50 bg-fd-card/30 py-9">
+        <div className="mx-auto flex max-w-6xl flex-col items-center px-6">
+          <p className="text-xs font-semibold tracking-widest text-fd-muted-foreground uppercase">Supported Across All Major Ecosystems</p>
+          <div className="mt-8 flex flex-wrap justify-center gap-6 sm:gap-10">
+            {languages.map((lang) => (
+              <Link href={lang.href} key={lang.name} className="flex flex-col items-center gap-2">
+                <div className={`p-4 rounded-2xl border border-fd-border bg-fd-card ${lang.color} ${lang.bg}`}>
+                  {lang.icon}
+                </div>
+                <span className="text-[11px] font-medium text-fd-muted-foreground">{lang.name}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features Bento Grid */}
+      <section className="w-full max-w-6xl px-6 py-20 md:py-24">
+        <div className="text-center mb-16">
+          <h2 className="text-xl font-bold tracking-tight text-fd-foreground sm:text-3xl">
+            Why Choose DOTLYTE?
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-fd-muted-foreground sm:text-base">
+            Stop writing config boilerplate. Get a universal, type-safe configuration API that feels native in every language.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
           {features.map((f) => (
             <div
               key={f.title}
-              className="rounded-xl border border-fd-border bg-fd-card p-6 transition-all hover:shadow-lg hover:border-fd-primary/30"
+              className={`relative overflow-hidden rounded-3xl border border-fd-border bg-fd-card p-7 ${f.border}`}
             >
-              <div className={`mb-4 ${f.color}`}>{f.icon}</div>
-              <h3 className="text-lg font-semibold">{f.title}</h3>
-              <p className="mt-2 text-sm text-fd-muted-foreground leading-relaxed">
-                {f.description}
-              </p>
+              <div className={`absolute top-0 right-0 -m-8 h-32 w-32 rounded-full blur-3xl opacity-40 ${f.bg}`} />
+              <div className="relative z-10">
+                <div className={`mb-6 inline-flex rounded-2xl p-4 ${f.bg} ${f.color} ring-1 ring-inset ${f.border}`}>
+                  {f.icon}
+                </div>
+                <h3 className="text-lg font-bold text-fd-foreground">{f.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-fd-muted-foreground">
+                  {f.description}
+                </p>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Languages Grid */}
-      <section className="w-full max-w-6xl px-6 py-20">
-        <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
-          8 Languages. One API.
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-center text-fd-muted-foreground">
-          Every implementation follows the same spec. Learn once, use everywhere.
-        </p>
-        <div className="mt-14 grid grid-cols-2 gap-4 md:grid-cols-4">
-          {languages.map((lang) => (
-            <Link
-              key={lang.name}
-              href={lang.href}
-              className="flex flex-col items-center rounded-xl border border-fd-border bg-fd-card p-6 transition-all hover:shadow-lg hover:border-fd-primary/30 hover:-translate-y-1"
-            >
-              <span className={lang.color}>{lang.icon}</span>
-              <span className="mt-3 font-semibold">{lang.name}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="w-full px-6 py-20 text-center">
-        <div className="mx-auto max-w-2xl rounded-2xl border border-fd-border bg-gradient-to-b from-fd-primary/5 to-fd-card p-12">
-          <h2 className="text-3xl font-bold">Ready to simplify your config?</h2>
-          <p className="mt-4 text-fd-muted-foreground">
-            Pick your language and start loading configuration in under 5 minutes.
+      {/* CTA Section */}
+      <section className="w-full px-6 pb-20 md:pb-24">
+        <div className="relative mx-auto max-w-5xl overflow-hidden rounded-[2.5rem] border border-fd-border bg-fd-card px-6 py-16 text-center sm:px-16">
+          <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-fd-primary/20 via-fd-card to-fd-card opacity-50" />
+          <h2 className="text-2xl font-bold tracking-tight text-fd-foreground md:text-3xl">
+            Ready to standardize your config?
+          </h2>
+          <p className="mx-auto mt-5 max-w-2xl text-sm text-fd-muted-foreground sm:text-base">
+            Drop in DOTLYTE and never worry about parsing environment variables, type casting strings, or bridging .env with YAML ever again.
           </p>
-          <Link
-            href="/docs/getting-started"
-            className="mt-8 inline-flex items-center rounded-lg bg-fd-primary px-8 py-3 text-sm font-semibold text-fd-primary-foreground shadow-lg transition-all hover:opacity-90"
-          >
-            Get Started →
-          </Link>
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/docs/getting-started"
+              className="inline-flex items-center gap-2 rounded-full bg-fd-primary px-8 py-3.5 text-sm font-bold text-fd-primary-foreground"
+            >
+              Get Started Now
+              <Zap className="h-4 w-4" />
+            </Link>
+            <a
+              href="https://github.com/dotlyte/dotlyte"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-background px-8 py-3.5 text-sm font-bold text-fd-foreground"
+            >
+              View on GitHub
+            </a>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="w-full border-t border-fd-border px-6 py-8 text-center text-sm text-fd-muted-foreground">
-        <p>MIT Licensed · Built with <Heart className="inline h-4 w-4 text-red-500 fill-red-500" /> by the DOTLYTE Contributors</p>
+      <footer className="w-full border-t border-fd-border bg-fd-background px-6 py-12">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 sm:flex-row">
+          <p className="text-sm text-fd-muted-foreground">
+            MIT Licensed · Built with <Heart className="mx-1 inline h-4 w-4 text-red-500 fill-red-500" /> by the DOTLYTE Contributors
+          </p>
+          <div className="flex gap-4">
+             <Link href="/docs" className="text-sm font-medium text-fd-muted-foreground">Documentation</Link>
+             <Link href="/docs/api/load" className="text-sm font-medium text-fd-muted-foreground">API Reference</Link>
+          </div>
+        </div>
       </footer>
     </main>
   );

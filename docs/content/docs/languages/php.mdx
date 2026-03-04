@@ -13,7 +13,7 @@ composer require dotlyte/dotlyte
 ### Requirements
 
 - PHP **8.1+**
-- No required dependencies (YAML support via `symfony/yaml` optional)
+- Optional: PHP `yaml` extension for YAML support
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ echo $config->get('database.port', 5432);        // 5432
 
 ## API Reference
 
-### `Dotlyte::load(array $options = []): Config`
+### `Dotlyte::load(?LoadOptions $options = null): Config`
 
 ```php
 use Dotlyte\Dotlyte;
@@ -42,13 +42,35 @@ use Dotlyte\LoadOptions;
 $config = Dotlyte::load();
 
 // With options
-$config = Dotlyte::load([
-    'files'    => ['.env', 'config.yaml'],
-    'prefix'   => 'APP_',
-    'defaults' => ['port' => 3000],
-    'env'      => 'production',
-]);
+$options = new LoadOptions();
+$options->files = ['.env', 'config.yaml'];
+$options->prefix = 'APP_';
+$options->defaults = ['port' => 3000];
+$options->env = 'production';
+
+$config = Dotlyte::load($options);
 ```
+
+### `LoadOptions`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `files` | `?array` | `null` | Explicit config file paths |
+| `prefix` | `?string` | `null` | Env var prefix to strip |
+| `defaults` | `?array` | `null` | Default values (lowest priority) |
+| `sources` | `?array` | `null` | Source order: `"env"`, `"dotenv"`, `"yaml"`, `"json"`, `"defaults"` |
+| `env` | `?string` | `null` | Environment name |
+| `schema` | `?array` | `null` | Schema rules for validation |
+| `strict` | `bool` | `false` | Reject unknown keys |
+| `interpolateVars` | `bool` | `true` | Enable `${VAR}` interpolation |
+| `overrides` | `?array` | `null` | Highest priority values |
+| `debug` | `bool` | `false` | Debug logging |
+| `findUp` | `bool` | `false` | Walk up directories |
+| `rootMarkers` | `?array` | `null` | Project root markers |
+| `cwd` | `?string` | `null` | Working directory |
+| `allowAllEnvVars` | `bool` | `false` | Disable env var filtering |
+
+Note: PHP does **not** support file watching (`watch`/`debounceMs`).
 
 ### `Config`
 
@@ -62,41 +84,140 @@ $missing = $config->get('nope'); // null
 
 #### `require(string $key): mixed`
 
+Returns the value or throws `MissingKeyException`:
+
 ```php
-use Dotlyte\DotlyteException;
+use Dotlyte\MissingKeyException;
 
 try {
     $dbUrl = $config->require('database_url');
-} catch (DotlyteException $e) {
+} catch (MissingKeyException $e) {
     echo "Missing: " . $e->getKey();
+    echo "Checked: " . implode(', ', $e->getSourcesChecked());
     exit(1);
 }
+```
+
+#### `requireKeys(string ...$keys): array`
+
+Batch-require multiple keys. Returns an array of values:
+
+```php
+[$host, $port, $name] = $config->requireKeys('db.host', 'db.port', 'db.name');
 ```
 
 #### `has(string $key): bool`
 
 ```php
 if ($config->has('redis.host')) {
-    setupRedis($config->require('redis.host'));
+    setupRedis($config);
 }
 ```
 
-### Load Options
+#### `scope(string $prefix): Config`
 
-| Option | Type | Description |
-|---|---|---|
-| `files` | `string[]` | Explicit config file paths |
-| `prefix` | `string` | Env var prefix to strip |
-| `defaults` | `array` | Default values (lowest priority) |
-| `sources` | `string[]` | Custom source load order |
-| `env` | `string` | Environment name |
-
-### `DotlyteException`
+Create a scoped sub-config:
 
 ```php
-class DotlyteException extends \RuntimeException
-{
-    public function getKey(): ?string;
+$db = $config->scope('database');
+$db->get('host');  // same as $config->get('database.host')
+```
+
+#### Magic Property Access
+
+```php
+$config->database->host  // via __get()
+isset($config->database) // via __isset()
+```
+
+#### Serialization & Export
+
+```php
+$config->keys();            // array — top-level keys
+$config->toFlatKeys();      // array<string> — all flattened keys
+$config->toFlatArray();     // array<string, mixed> — flat key→value
+$config->toArray();         // array<string, mixed> — deep nested
+$config->toArrayRedacted(); // array — sensitive values masked
+$config->toJson();          // string — JSON (pretty-printed)
+$config->writeTo('out.json'); // Write JSON to file
+```
+
+#### Schema Validation
+
+```php
+use Dotlyte\SchemaRule;
+
+$schema = [
+    'port' => new SchemaRule(type: 'integer', required: true, min: 1, max: 65535),
+    'host' => new SchemaRule(type: 'string', required: true),
+];
+
+$violations = $config->validate($schema);
+foreach ($violations as $v) {
+    echo "$v->key: $v->message\n";
+}
+
+$config->assertValid($schema); // throws ValidationException
+```
+
+### Variable Interpolation
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+### Encryption (AES-256-GCM)
+
+```php
+use Dotlyte\Encryption;
+
+$key = Encryption::generateKey();
+
+$encrypted = Encryption::encryptValue('s3cret', $key);  // "ENC[...]"
+$plain = Encryption::decryptValue($encrypted, $key);      // "s3cret"
+
+Encryption::encryptFile('.env', '.env.enc', $key);
+Encryption::decryptFile('.env.enc', '.env.dec', $key);
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `load()`.
+
+### Sensitive Value Masking
+
+```php
+$config->toArrayRedacted();
+// ['db.host' => 'localhost', 'db.password' => '[REDACTED]']
+```
+
+### Error Types
+
+All extend `DotlyteException` (which extends `\RuntimeException`):
+
+| Exception Class | Extra Properties |
+|---|---|
+| `DotlyteException` | `getKey()` |
+| `MissingKeyException` | `getSourcesChecked()` |
+| `FileException` | `getFilePath()` |
+| `ValidationException` | `getViolations()` |
+| `InterpolationException` | — |
+| `DecryptionException` | — |
+
+```php
+use Dotlyte\DotlyteException;
+use Dotlyte\MissingKeyException;
+
+try {
+    $config->require('missing');
+} catch (MissingKeyException $e) {
+    echo $e->getKey();             // "missing"
+    echo $e->getSourcesChecked();  // [".env", "config.yaml"]
+} catch (DotlyteException $e) {
+    echo $e->getMessage();
 }
 ```
 
@@ -110,6 +231,7 @@ class DotlyteException extends \RuntimeException
 namespace App\Providers;
 
 use Dotlyte\Dotlyte;
+use Dotlyte\LoadOptions;
 use Illuminate\Support\ServiceProvider;
 
 class DotlyteServiceProvider extends ServiceProvider
@@ -117,10 +239,10 @@ class DotlyteServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton('dotlyte', function () {
-            return Dotlyte::load([
-                'prefix' => 'APP_',
-                'env'    => app()->environment(),
-            ]);
+            $options = new LoadOptions();
+            $options->prefix = 'APP_';
+            $options->env = app()->environment();
+            return Dotlyte::load($options);
         });
     }
 }
@@ -137,11 +259,13 @@ $dbHost = $config->require('database.host');
 ```php
 // config/services.php
 use Dotlyte\Dotlyte;
+use Dotlyte\LoadOptions;
 
-$config = Dotlyte::load([
-    'prefix' => 'APP_',
-    'env'    => $_ENV['APP_ENV'] ?? 'dev',
-]);
+$options = new LoadOptions();
+$options->prefix = 'APP_';
+$options->env = $_ENV['APP_ENV'] ?? 'dev';
+
+$config = Dotlyte::load($options);
 
 $container->setParameter('database.host', $config->require('database.host'));
 $container->setParameter('database.port', $config->get('database.port', 5432));
@@ -152,8 +276,12 @@ $container->setParameter('database.port', $config->get('database.port', 5432));
 ```php
 use Slim\Factory\AppFactory;
 use Dotlyte\Dotlyte;
+use Dotlyte\LoadOptions;
 
-$config = Dotlyte::load(['prefix' => 'APP_']);
+$options = new LoadOptions();
+$options->prefix = 'APP_';
+$config = Dotlyte::load($options);
+
 $app = AppFactory::create();
 
 $app->get('/', function ($request, $response) use ($config) {
@@ -169,15 +297,16 @@ $app->run();
 ```php
 use PHPUnit\Framework\TestCase;
 use Dotlyte\Dotlyte;
-use Dotlyte\DotlyteException;
+use Dotlyte\LoadOptions;
+use Dotlyte\MissingKeyException;
 
 class ConfigTest extends TestCase
 {
     public function testDefaults(): void
     {
-        $config = Dotlyte::load([
-            'defaults' => ['host' => 'localhost'],
-        ]);
+        $options = new LoadOptions();
+        $options->defaults = ['host' => 'localhost'];
+        $config = Dotlyte::load($options);
 
         $this->assertEquals('localhost', $config->get('host'));
     }
@@ -185,15 +314,31 @@ class ConfigTest extends TestCase
     public function testRequireMissing(): void
     {
         $config = Dotlyte::load();
-        $this->expectException(DotlyteException::class);
+        $this->expectException(MissingKeyException::class);
         $config->require('nonexistent');
     }
 }
 ```
 
-<Callout type="info">
-  DOTLYTE follows PHP conventions: PSR-4 autoloading, PSR-12 coding style, `RuntimeException` inheritance for the error class.
-</Callout>
+## File Structure
+
+```
+langs/php/src/
+├── Dotlyte.php            # Static load() entry point
+├── Config.php             # Config class with all access methods
+├── LoadOptions.php        # Options class
+├── Loader.php             # File loading logic
+├── DotlyteException.php   # All exception classes
+├── Coercion.php           # Type coercion engine
+├── Merger.php             # Deep merge
+├── Interpolation.php      # ${VAR} interpolation
+├── Encryption.php         # AES-256-GCM encrypt/decrypt
+├── Validator.php          # Schema validation
+├── SchemaRule.php         # Schema rule definition
+├── SchemaViolation.php    # Validation violation
+├── Masking.php            # Sensitive value redaction
+└── Parsers/               # File format parsers
+```
 
 ## Build & Test
 
@@ -208,25 +353,4 @@ vendor/bin/phpunit
 
 # Static analysis (PHPStan)
 vendor/bin/phpstan analyse
-```
-
-## Project Structure
-
-```
-langs/php/
-├── src/
-│   ├── Dotlyte.php            # Static load() entry point
-│   ├── Config.php             # Config class
-│   ├── LoadOptions.php        # Options class
-│   ├── DotlyteException.php   # Exception class
-│   ├── Coercion.php           # Type coercion engine
-│   └── Parsers/
-│       ├── EnvParser.php
-│       ├── YamlParser.php
-│       ├── JsonParser.php
-│       └── TomlParser.php
-├── tests/                     # PHPUnit tests
-├── composer.json
-├── phpunit.xml
-└── phpstan.neon
 ```

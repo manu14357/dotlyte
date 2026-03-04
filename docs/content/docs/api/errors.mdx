@@ -1,28 +1,46 @@
 ---
 title: Errors
-description: Error handling and the DotlyteError type.
+description: Error handling and the DotlyteError hierarchy.
 icon: AlertTriangle
 ---
 
-DOTLYTE provides clear, actionable error messages that include the key name, sources checked, and a suggestion for resolution.
+DOTLYTE provides a hierarchy of typed errors with clear, actionable messages that include the key name, sources checked, and suggestions for resolution.
 
-## DotlyteError
+## Error Hierarchy
 
-The base error type for all DOTLYTE errors. Every language implementation uses an equivalent type.
+All DOTLYTE errors extend a base error type:
+
+| Error Type | Cause | Extra Properties |
+|---|---|---|
+| `DotlyteError` | Base error | `key` |
+| `MissingKeyError` | `require()` on missing key | `sources_checked` |
+| `FileError` | File not found or unreadable | `file_path` |
+| `ValidationError` | Schema validation failed | `violations` |
+| `InterpolationError` | `${VAR}` resolution failed | — |
+| `DecryptionError` | `ENC[...]` decryption failed | — |
+
+<Callout type="info">
+  Naming conventions vary by language: Python uses `MissingKeyError`, JavaScript uses `MissingKeyError`, Java/C# use `MissingKeyException`, etc. The structure is identical across all implementations.
+</Callout>
+
+## Error Types
+
+### DotlyteError (Base)
 
 <Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "C#"]}>
   <Tab value="Python">
     ```python
     class DotlyteError(Exception):
-        key: str | None    # The config key that caused the error
-        message: str       # Human-readable error message
+        key: str | None       # Config key that caused the error
+        code: str             # Error code (e.g. "MISSING_KEY")
+        message: str          # Human-readable message
     ```
   </Tab>
   <Tab value="JavaScript">
     ```typescript
     class DotlyteError extends Error {
       readonly key?: string;
-      readonly message: string;
+      readonly code: string;
     }
     ```
   </Tab>
@@ -32,7 +50,6 @@ The base error type for all DOTLYTE errors. Every language implementation uses a
         Key     string
         Message string
     }
-
     func (e *DotlyteError) Error() string
     ```
   </Tab>
@@ -40,19 +57,18 @@ The base error type for all DOTLYTE errors. Every language implementation uses a
     ```rust
     #[derive(Debug, thiserror::Error)]
     pub enum DotlyteError {
-        #[error("Missing required key: {0}")]
-        MissingKey(String),
-
-        #[error("Parse error: {0}")]
-        ParseError(String),
+        MissingKey { key: String, sources_checked: Vec<String> },
+        FileError { path: String, message: String },
+        ValidationError { violations: Vec<SchemaViolation> },
+        InterpolationError { key: String, message: String },
+        DecryptionError { message: String },
     }
     ```
   </Tab>
   <Tab value="Java">
     ```java
     public class DotlyteException extends RuntimeException {
-        private final String key;
-        // getKey(), getMessage()
+        public String getKey();
     }
     ```
   </Tab>
@@ -66,83 +82,137 @@ The base error type for all DOTLYTE errors. Every language implementation uses a
   </Tab>
 </Tabs>
 
-## Error Scenarios
+---
 
-### Missing Required Key
+### MissingKeyError
 
-Thrown by `config.require(key)` when the key doesn't exist:
+Thrown by `require()` / `require_keys()` when a key doesn't exist:
 
 ```python
 config.require("database_url")
-# DotlyteError: Missing required config key 'database_url'.
+# MissingKeyError: Missing required config key 'database_url'.
 # Checked sources: .env, config.yaml, environment variables.
 # Suggestion: Add DATABASE_URL to your .env file or environment.
 ```
 
-### Parse Error
+Extra properties:
+- `sources_checked` / `sourcesChecked` / `SourcesChecked` — list of sources that were searched
 
-Thrown when a config file has invalid syntax:
+---
 
-```python
-config = load()
-# DotlyteError: Invalid YAML syntax in config.yaml: expected block end (line 5).
-```
+### FileError
 
-### File Not Found
-
-When explicit files are specified but don't exist:
+Thrown when a config file cannot be read (not found, permission denied, invalid syntax):
 
 ```python
 config = load(files=["missing.env"])
-# DotlyteError: Config file not found: missing.env
+# FileError: Config file not found: missing.env
 ```
+
+Extra properties:
+- `file_path` / `filePath` / `FilePath` — the file that caused the error
+
+---
+
+### ValidationError
+
+Thrown by `assert_valid()` when schema validation fails:
+
+```python
+config.assert_valid({"port": {"type": "integer", "required": True}})
+# ValidationError: Schema validation failed with 2 violations
+```
+
+Extra properties:
+- `violations` / `Violations` — list of `SchemaViolation` objects, each with `key`, `message`, and `rule`
+
+---
+
+### InterpolationError
+
+Thrown when `${VAR}` interpolation fails (circular reference, missing required variable):
+
+```bash
+# .env
+A=${B}
+B=${A}
+```
+
+```python
+config = load()
+# InterpolationError: Circular reference detected: A → B → A
+```
+
+---
+
+### DecryptionError
+
+Thrown when `ENC[...]` decryption fails (wrong key, corrupted data, no key available):
+
+```python
+config = load(encryption_key="wrong-key")
+# DecryptionError: Failed to decrypt value for key 'api_secret'
+```
+
+---
 
 ## Handling Errors
 
 ### Python
 
 ```python
-from dotlyte import load, DotlyteError
+from dotlyte import load, DotlyteError, MissingKeyError, ValidationError
 
 try:
-    config = load()
+    config = load(schema={"port": {"type": "integer", "required": True}})
     db_url = config.require("database_url")
+except MissingKeyError as e:
+    print(f"Missing key: {e.key}")
+    print(f"Checked: {e.sources_checked}")
+except ValidationError as e:
+    for v in e.violations:
+        print(f"  {v.key}: {v.message}")
 except DotlyteError as e:
-    print(f"Config error: {e}")
-    print(f"Key: {e.key}")
-    sys.exit(1)
+    print(f"Config error [{e.code}]: {e}")
 ```
 
 ### JavaScript
 
 ```typescript
-import { load, DotlyteError } from "dotlyte";
+import { load, MissingKeyError, ValidationError, DotlyteError } from "dotlyte";
 
 try {
-  const config = load();
+  const config = load({ schema: { port: { type: "integer", required: true } } });
   const dbUrl = config.require("database_url");
 } catch (e) {
-  if (e instanceof DotlyteError) {
-    console.error(`Config error: ${e.message}`);
-    console.error(`Key: ${e.key}`);
-    process.exit(1);
+  if (e instanceof MissingKeyError) {
+    console.error(`Missing: ${e.key}, checked: ${e.sourcesChecked}`);
+  } else if (e instanceof ValidationError) {
+    e.violations.forEach(v => console.error(`${v.key}: ${v.message}`));
+  } else if (e instanceof DotlyteError) {
+    console.error(`Config error [${e.code}]: ${e.message}`);
   }
-  throw e;
 }
 ```
 
 ### Go
 
 ```go
-config := dotlyte.Load(nil)
+config, err := dotlyte.Load(nil)
+if err != nil {
+    var fileErr *dotlyte.FileError
+    if errors.As(err, &fileErr) {
+        log.Fatalf("File error: %s (path: %s)", fileErr.Message, fileErr.FilePath)
+    }
+    log.Fatal(err)
+}
 
 dbUrl, err := config.Require("database_url")
 if err != nil {
-    var dotErr *dotlyte.DotlyteError
-    if errors.As(err, &dotErr) {
-        log.Fatalf("Config error for key %s: %s", dotErr.Key, dotErr.Message)
+    var missingErr *dotlyte.MissingKeyError
+    if errors.As(err, &missingErr) {
+        log.Fatalf("Missing key %s, checked: %v", missingErr.Key, missingErr.SourcesChecked)
     }
-    log.Fatal(err)
 }
 ```
 
@@ -153,19 +223,64 @@ use dotlyte::{load, DotlyteError};
 
 match load(None) {
     Ok(config) => {
-        match config.require::<String>("database_url") {
-            Ok(url) => println!("DB URL: {}", url),
-            Err(DotlyteError::MissingKey(key)) => {
-                eprintln!("Missing required key: {}", key);
+        match config.require("database_url") {
+            Ok(url) => println!("DB: {}", url),
+            Err(DotlyteError::MissingKey { key, sources_checked }) => {
+                eprintln!("Missing: {key}, checked: {sources_checked:?}");
                 std::process::exit(1);
             }
-            Err(e) => panic!("Unexpected error: {}", e),
+            Err(e) => panic!("{e}"),
         }
     }
-    Err(e) => {
-        eprintln!("Failed to load config: {}", e);
-        std::process::exit(1);
+    Err(DotlyteError::FileError { path, message }) => {
+        eprintln!("File error: {path}: {message}");
     }
+    Err(e) => eprintln!("Config error: {e}"),
+}
+```
+
+### Java
+
+```java
+import dev.dotlyte.*;
+
+try {
+    Config config = Dotlyte.load(LoadOptions.builder().build());
+    Object dbUrl = config.require("database_url");
+} catch (DotlyteException.MissingKeyException e) {
+    System.err.println("Missing: " + e.getKey());
+    System.err.println("Checked: " + e.getSourcesChecked());
+} catch (DotlyteException.ValidationException e) {
+    e.getViolations().forEach(v ->
+        System.err.println(v.getKey() + ": " + v.getMessage()));
+} catch (DotlyteException e) {
+    System.err.println("Config error: " + e.getMessage());
+}
+```
+
+### C\#
+
+```csharp
+using Dotlyte;
+
+try
+{
+    var config = DotlyteLoader.Load();
+    var dbUrl = config.Require("database_url");
+}
+catch (MissingKeyException ex)
+{
+    Console.Error.WriteLine($"Missing: {ex.Key}");
+    Console.Error.WriteLine($"Checked: {string.Join(", ", ex.SourcesChecked)}");
+}
+catch (ValidationException ex)
+{
+    foreach (var v in ex.Violations)
+        Console.Error.WriteLine($"{v.Key}: {v.Message}");
+}
+catch (DotlyteException ex)
+{
+    Console.Error.WriteLine($"Config error: {ex.Message}");
 }
 ```
 
@@ -177,7 +292,13 @@ match load(None) {
 
 ```python
 # Good: Validate all required config at startup
-config = load()
+config = load(schema={
+    "database_url": {"type": "string", "required": True},
+    "jwt_secret": {"type": "string", "required": True, "sensitive": True},
+    "port": {"type": "integer", "default": 8080},
+})
+config.assert_valid()
+
 DB_URL = config.require("database_url")
 SECRET = config.require("jwt_secret")
 PORT = config.get("port", 8080)

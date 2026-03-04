@@ -18,8 +18,9 @@ Or in your `.csproj`:
 
 ### Requirements
 
-- .NET **6.0+** (supports .NET 6, 8, and 10)
-- C# **10+**
+- .NET **8.0+** (targets `net8.0` and `net10.0`)
+- C# **12+**
+- Nullable annotations enabled
 
 ## Quick Start
 
@@ -29,14 +30,14 @@ using Dotlyte;
 var config = DotlyteLoader.Load();
 
 var host = config.Get("database.host", "localhost");
-var port = config.Get("database.port", "5432");
+var port = config.Get<int>("database.port", 5432);
 
 Console.WriteLine($"DB: {host}:{port}");
 ```
 
 ## API Reference
 
-### `DotlyteLoader.Load(options?)`
+### `DotlyteLoader.Load(LoadOptions? options = null): Config`
 
 ```csharp
 using Dotlyte;
@@ -47,9 +48,9 @@ var config = DotlyteLoader.Load();
 // With options
 var config = DotlyteLoader.Load(new LoadOptions
 {
-    Files = new[] { ".env", "config.yaml" },
+    Files = [".env", "config.json"],
     Prefix = "APP_",
-    Defaults = new Dictionary<string, object>
+    Defaults = new Dictionary<string, object?>
     {
         ["port"] = 3000,
         ["log_level"] = "info",
@@ -58,61 +59,232 @@ var config = DotlyteLoader.Load(new LoadOptions
 });
 ```
 
+### `LoadOptions`
+
+All properties use `init`-only setters:
+
+```csharp
+public sealed class LoadOptions
+{
+    public string[]? Files { get; init; }
+    public string? Prefix { get; init; }
+    public Dictionary<string, object?> Defaults { get; init; }          // = new()
+    public string[]? Sources { get; init; }
+    public string? Env { get; init; }
+    public Dictionary<string, SchemaRule>? Schema { get; init; }
+    public bool Strict { get; init; }                                    // false
+    public bool InterpolateVars { get; init; }                           // true
+    public Dictionary<string, object?> Overrides { get; init; }         // = new()
+    public bool Debug { get; init; }                                     // false
+    public bool FindUp { get; init; }                                    // false
+    public string[] RootMarkers { get; init; }                           // [".git", "package.json", ...]
+    public string? Cwd { get; init; }
+    public bool AllowAllEnvVars { get; init; }                           // false
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `Files` | `string[]?` | `null` | Explicit config file paths |
+| `Prefix` | `string?` | `null` | Env var prefix to strip |
+| `Defaults` | `Dictionary<string, object?>` | `new()` | Default values (lowest priority) |
+| `Sources` | `string[]?` | `null` | Source order: `"env"`, `"dotenv"`, `"json"`, `"defaults"` |
+| `Env` | `string?` | `null` | Environment name |
+| `Schema` | `Dictionary<string, SchemaRule>?` | `null` | Schema rules for validation |
+| `Strict` | `bool` | `false` | Reject unknown keys |
+| `InterpolateVars` | `bool` | `true` | Enable `${VAR}` interpolation |
+| `Overrides` | `Dictionary<string, object?>` | `new()` | Highest priority values |
+| `Debug` | `bool` | `false` | Debug logging |
+| `FindUp` | `bool` | `false` | Walk up directories |
+| `RootMarkers` | `string[]` | `[".git", ...]` | Project root markers |
+| `Cwd` | `string?` | `null` | Working directory |
+| `AllowAllEnvVars` | `bool` | `false` | Disable env var filtering |
+
+Note: .NET does **not** support file watching (`Watch`/`DebounceMs`).
+
 ### `Config`
 
-#### `Get(string key, string? defaultValue = null)`
+#### `Get(string key, object? defaultValue = null): object?`
 
 ```csharp
 var host = config.Get("server.host", "0.0.0.0");
-var port = config.Get("server.port", "8080");
 var missing = config.Get("nope"); // null
 ```
 
-#### `Require(string key)`
+#### `Get<T>(string key, T? defaultValue = default): T?`
+
+Typed access via `Convert.ChangeType`:
+
+```csharp
+var port = config.Get<int>("server.port", 8080);
+var debug = config.Get<bool>("debug", false);
+var ratio = config.Get<double>("ratio", 1.0);
+```
+
+#### `Require(string key): object`
+
+Returns the value or throws `MissingKeyException`:
 
 ```csharp
 try
 {
     var dbUrl = config.Require("database_url");
 }
-catch (DotlyteException ex)
+catch (MissingKeyException ex)
 {
     Console.Error.WriteLine($"Missing: {ex.Key}");
+    Console.Error.WriteLine($"Checked: {string.Join(", ", ex.SourcesChecked)}");
     Environment.Exit(1);
 }
 ```
 
-#### `Has(string key)`
+#### `RequireKeys(params string[] keys): object[]`
+
+Batch-require multiple keys:
+
+```csharp
+var (host, port, name) = config.RequireKeys("db.host", "db.port", "db.name")
+    is [var h, var p, var n] ? (h, p, n) : throw new Exception();
+```
+
+#### `Has(string key): bool`
 
 ```csharp
 if (config.Has("redis.host"))
 {
-    SetupRedis(config.Require("redis.host"));
+    SetupRedis(config);
 }
 ```
 
-### `LoadOptions`
+#### `Scope(string prefix): Config`
+
+Create a scoped sub-config:
 
 ```csharp
-public class LoadOptions
+var db = config.Scope("database");
+db.Get("host");  // same as config.Get("database.host")
+```
+
+#### Indexer Access
+
+```csharp
+var value = config["database.host"];    // returns object?
+var nested = config["database"];         // returns nested Config for dict values
+```
+
+#### Serialization & Export
+
+```csharp
+config.Keys();                 // List<string> — top-level keys
+config.ToFlatKeys();           // List<string> — all keys dot-flattened
+config.ToFlatDictionary();     // Dictionary<string, object?> — flat key→value
+config.ToDictionary();         // Dictionary<string, object?> — shallow copy
+config.ToDictionaryRedacted(); // Dictionary<string, object?> — sensitive values masked
+config.ToJson();               // string — indented JSON
+config.WriteTo("out.json");   // Write JSON to file (.json only)
+```
+
+#### Schema Validation
+
+```csharp
+var schema = new Dictionary<string, SchemaRule>
 {
-    public string[]? Files { get; set; }
-    public string? Prefix { get; set; }
-    public Dictionary<string, object>? Defaults { get; set; }
-    public string[]? Sources { get; set; }
-    public string? Env { get; set; }
+    ["port"] = new SchemaRule { Type = "integer", Required = true, Min = 1, Max = 65535 },
+    ["host"] = new SchemaRule { Type = "string", Required = true },
+};
+
+List<SchemaViolation> violations = config.Validate(schema);
+foreach (var v in violations)
+{
+    Console.WriteLine($"{v.Key}: {v.Message}");
+}
+
+config.AssertValid(schema); // throws ValidationException
+```
+
+### `SchemaRule`
+
+```csharp
+public sealed record SchemaRule
+{
+    public string? Type { get; init; }           // "string"|"integer"|"boolean"|"number"|"array"
+    public bool Required { get; init; }
+    public string? Format { get; init; }         // "email"|"url"|"uuid"|"date"|"ipv4"|"ip"|"port"
+    public string? Pattern { get; init; }        // Regex pattern
+    public string[]? EnumValues { get; init; }
+    public double? Min { get; init; }
+    public double? Max { get; init; }
+    public object? DefaultValue { get; init; }
+    public bool Sensitive { get; init; }
+    public string? Doc { get; init; }
 }
 ```
 
-### `DotlyteException`
+### Variable Interpolation
+
+```bash
+# In .env:
+BASE_URL=https://api.example.com
+API_ENDPOINT=${BASE_URL}/v1
+GREETING=${NAME:-World}
+REQUIRED=${SECRET:?must be set}
+LITERAL=$$NOT_INTERPOLATED
+```
+
+Detects circular references and throws `InterpolationException`.
+
+### Encryption (AES-256-GCM)
 
 ```csharp
-public class DotlyteException : Exception
-{
-    public string? Key { get; }
+using Dotlyte;
 
-    public DotlyteException(string message);
-    public DotlyteException(string message, string key);
+var key = Encryption.GenerateKey();  // 64-char hex string
+
+var encrypted = Encryption.EncryptValue("s3cret", key);  // "ENC[aes-256-gcm,...]"
+var plain = Encryption.DecryptValue(encrypted, key);      // "s3cret"
+```
+
+Values wrapped in `ENC[...]` are auto-decrypted during `Load()`.
+
+Key resolution searches (in order): `DOTLYTE_KEY_{ENV}`, `DOTLYTE_KEY`, `.dotlyte-keys` file.
+
+### Sensitive Value Masking
+
+```csharp
+var redacted = config.ToDictionaryRedacted();
+// { "db.host": "localhost", "db.password": "[REDACTED]" }
+```
+
+Auto-detects keys matching: `password`, `secret`, `token`, `api_key`, `private_key`, `access_key`, `auth`, `credential`, `connection_string`, `dsn`, `encryption_key`, `signing_key`, `certificate`.
+
+### Error Types
+
+All inherit from `DotlyteException` (which extends `Exception`):
+
+| Exception Class | Extra Properties |
+|---|---|
+| `DotlyteException` | `Key` (string?) |
+| `MissingKeyException` | `SourcesChecked` (IReadOnlyList&lt;string&gt;) |
+| `FileException` | `FilePath` (string?) |
+| `ValidationException` | `Violations` (IReadOnlyList&lt;SchemaViolation&gt;) |
+| `InterpolationException` | — |
+| `DecryptionException` | — |
+
+```csharp
+using Dotlyte;
+
+try
+{
+    config.Require("missing");
+}
+catch (MissingKeyException ex)
+{
+    Console.WriteLine(ex.Key);            // "missing"
+    Console.WriteLine(ex.SourcesChecked); // [".env", "config.json"]
+}
+catch (DotlyteException ex)
+{
+    Console.WriteLine(ex.Message);
 }
 ```
 
@@ -133,7 +305,7 @@ var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
 app.MapGet("/", () => "Hello, DOTLYTE!");
-app.Run($"http://0.0.0.0:{config.Get("port", "5000")}");
+app.Run($"http://0.0.0.0:{config.Get<int>("port", 5000)}");
 ```
 
 ### ASP.NET Core with DI
@@ -143,7 +315,6 @@ using Dotlyte;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register as singleton
 builder.Services.AddSingleton(_ =>
     DotlyteLoader.Load(new LoadOptions
     {
@@ -155,7 +326,7 @@ builder.Services.AddSingleton(_ =>
 var app = builder.Build();
 
 app.MapGet("/config", (Config config) =>
-    new { Host = config.Get("host"), Port = config.Get("port") }
+    new { Host = config.Get("host"), Port = config.Get<int>("port") }
 );
 
 app.Run();
@@ -168,8 +339,8 @@ using Dotlyte;
 
 var config = DotlyteLoader.Load(new LoadOptions
 {
-    Files = new[] { "appsettings.json", ".env" },
-    Defaults = new Dictionary<string, object>
+    Files = ["appsettings.json", ".env"],
+    Defaults = new Dictionary<string, object?>
     {
         ["log_level"] = "info",
         ["max_retries"] = 3,
@@ -177,7 +348,7 @@ var config = DotlyteLoader.Load(new LoadOptions
 });
 
 var logLevel = config.Get("log_level", "info");
-var maxRetries = int.Parse(config.Get("max_retries", "3"));
+var maxRetries = config.Get<int>("max_retries", 3);
 Console.WriteLine($"Log level: {logLevel}, Max retries: {maxRetries}");
 ```
 
@@ -194,7 +365,7 @@ public class ConfigTests
     {
         var config = DotlyteLoader.Load(new LoadOptions
         {
-            Defaults = new Dictionary<string, object>
+            Defaults = new Dictionary<string, object?>
             {
                 ["host"] = "localhost",
             },
@@ -207,14 +378,47 @@ public class ConfigTests
     public void RequireThrowsForMissingKey()
     {
         var config = DotlyteLoader.Load();
-        Assert.Throws<DotlyteException>(() => config.Require("nonexistent"));
+        Assert.Throws<MissingKeyException>(() => config.Require("nonexistent"));
+    }
+
+    [Fact]
+    public void TypedGetWorks()
+    {
+        var config = DotlyteLoader.Load(new LoadOptions
+        {
+            Defaults = new Dictionary<string, object?> { ["port"] = 8080 },
+        });
+
+        Assert.Equal(8080, config.Get<int>("port"));
     }
 }
 ```
 
-<Callout type="info">
-  DOTLYTE follows .NET conventions: `PascalCase` for public methods, nullable annotations enabled, XML documentation comments for IntelliSense, and multi-target framework support (`net6.0`, `net8.0`, `net10.0`).
-</Callout>
+## File Structure
+
+```
+langs/dotnet/
+├── src/Dotlyte/
+│   ├── Dotlyte.csproj         # Targets: net8.0;net10.0
+│   ├── DotlyteLoader.cs       # Static Load() entry point
+│   ├── Config.cs              # Config class with all access methods
+│   ├── LoadOptions.cs         # Options (init-only properties)
+│   ├── DotlyteException.cs    # All exception classes
+│   ├── Loader.cs              # Internal file loading orchestration
+│   ├── Coercion.cs            # Type coercion engine
+│   ├── Merger.cs              # Deep merge
+│   ├── Interpolation.cs       # ${VAR} interpolation
+│   ├── Encryption.cs          # AES-256-GCM encrypt/decrypt
+│   ├── Validator.cs           # Schema validation
+│   ├── SchemaRule.cs          # Schema rule record
+│   ├── SchemaViolation.cs     # Validation violation record
+│   └── Masking.cs             # Sensitive value redaction
+├── tests/Dotlyte.Tests/
+│   ├── Dotlyte.Tests.csproj
+│   ├── CoercionTests.cs
+│   └── DotlyteLoaderTests.cs
+└── Dotlyte.sln
+```
 
 ## Build & Test
 
@@ -229,27 +433,4 @@ dotnet test
 
 # Format check
 dotnet format --verify-no-changes
-```
-
-## Project Structure
-
-```
-langs/dotnet/
-├── src/Dotlyte/
-│   ├── Dotlyte.csproj        # Multi-target: net6.0;net8.0;net10.0
-│   ├── DotlyteLoader.cs      # Static Load() entry point
-│   ├── Config.cs              # Config class
-│   ├── LoadOptions.cs         # Options record
-│   ├── DotlyteException.cs   # Exception class
-│   ├── Coercion.cs            # Type coercion engine
-│   └── Parsers/
-│       ├── EnvParser.cs
-│       ├── YamlParser.cs
-│       ├── JsonParser.cs
-│       └── TomlParser.cs
-├── tests/Dotlyte.Tests/
-│   ├── Dotlyte.Tests.csproj
-│   ├── CoercionTests.cs
-│   └── DotlyteLoaderTests.cs
-└── Dotlyte.sln
 ```
