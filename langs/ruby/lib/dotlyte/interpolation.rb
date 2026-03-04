@@ -130,7 +130,7 @@ module Dotlyte
 
         # Not found
         if error_msg
-          raise Error.new("Required variable '#{var_name}': #{error_msg}", key: var_name)
+          raise InterpolationError.new("Required variable '#{var_name}': #{error_msg}", key: var_name)
         end
 
         fallback || ""

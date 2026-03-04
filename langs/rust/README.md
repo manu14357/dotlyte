@@ -26,7 +26,7 @@ fn main() {
 - `yaml` — YAML file support via serde_yaml (enabled by default)
 - `toml-support` — TOML file support via toml crate (enabled by default)
 
-Disable defaults for minimal builds: `dotlyte = { version = "0.1", default-features = false }`
+Disable defaults for minimal builds: `dotlyte = { version = "0.1.1", default-features = false }`
 
 ## License
 

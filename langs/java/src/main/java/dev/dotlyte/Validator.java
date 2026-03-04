@@ -149,7 +149,7 @@ public final class Validator {
             for (SchemaViolation v : violations) {
                 sb.append("  - ").append(v).append("\n");
             }
-            throw new DotlyteException(sb.toString());
+            throw new DotlyteException.ValidationException(violations);
         }
     }
 

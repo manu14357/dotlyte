@@ -1,6 +1,6 @@
 [package]
 name = "dotlyte"
-version = "2.0.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["DOTLYTE Contributors"]
 description = "The universal .env and configuration library. One API for every language."

@@ -33,10 +33,11 @@ module Dotlyte
       key_bytes = [key_hex].pack("H*")
       raise Error, "Key must be 32 bytes, got #{key_bytes.bytesize}" unless key_bytes.bytesize == KEY_BYTES
 
-      cipher = OpenSSL::Cipher::AES256.new(:GCM)
+      cipher = OpenSSL::Cipher.new("aes-256-gcm")
       cipher.encrypt
-      iv = cipher.random_iv
       cipher.key = key_bytes
+      iv = cipher.random_iv
+      cipher.auth_data = ""
 
       ciphertext = cipher.update(plaintext) + cipher.final
       tag = cipher.auth_tag(GCM_TAG_BYTES)
@@ -78,15 +79,16 @@ module Dotlyte
       data = Base64.strict_decode64(parts[:data])
       tag = Base64.strict_decode64(parts[:tag])
 
-      cipher = OpenSSL::Cipher::AES256.new(:GCM)
+      cipher = OpenSSL::Cipher.new("aes-256-gcm")
       cipher.decrypt
-      cipher.iv = iv
       cipher.key = key_bytes
+      cipher.iv = iv
       cipher.auth_tag = tag
+      cipher.auth_data = ""
 
       cipher.update(data) + cipher.final
     rescue OpenSSL::Cipher::CipherError => e
-      raise Error, "Decryption failed: #{e.message}"
+      raise DecryptionError, "Decryption failed: #{e.message}"
     end
 
     # Decrypt all ENC[...] values in a hash.
