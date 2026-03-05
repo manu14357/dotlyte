@@ -43,6 +43,104 @@ config = load(
 )
 ```
 
+## Typed Config
+
+Validate environment variables at import time with full type coercion:
+
+```python
+from dotlyte import create_typed_config
+
+env = create_typed_config({
+    "DATABASE_URL": {"type": "url", "required": True},
+    "PORT": {"type": "integer", "default": 3000},
+    "DEBUG": {"type": "boolean", "default": False},
+    "LOG_LEVEL": {
+        "type": "string",
+        "enum": ["debug", "info", "warn", "error"],
+        "default": "info",
+    },
+})
+
+env["PORT"]       # 3000 (int)
+env["DEBUG"]      # False (bool)
+```
+
+### Sectioned Schemas
+
+Separate server/client variables for safety:
+
+```python
+env = create_typed_config({
+    "server": {
+        "DATABASE_URL": {"type": "string", "required": True, "sensitive": True},
+    },
+    "client": {
+        "NEXT_PUBLIC_APP_URL": {"type": "url"},
+    },
+    "shared": {
+        "NODE_ENV": {"type": "string", "enum": ["development", "test", "production"]},
+    },
+    "client_prefix": "NEXT_PUBLIC_",
+})
+```
+
+## Boundary Enforcement
+
+Prevent server-only variables from leaking to client contexts:
+
+```python
+from dotlyte import create_boundary_proxy
+
+proxy = create_boundary_proxy(
+    data=config.to_dict(),
+    server_keys={"DATABASE_URL", "SECRET_KEY"},
+    client_keys={"APP_NAME"},
+    shared_keys={"NODE_ENV"},
+)
+
+proxy.server_only()  # {"DATABASE_URL": ..., "SECRET_KEY": ..., "NODE_ENV": ...}
+proxy.client_only()  # {"APP_NAME": ..., "NODE_ENV": ...}
+```
+
+## Enhanced Encryption
+
+Key rotation and vault support:
+
+```python
+from dotlyte import rotate_keys, encrypt_vault, decrypt_vault
+
+# Rotate encryption keys
+rotated = rotate_keys(encrypted_data, old_key="old-pass", new_key="new-pass")
+
+# Encrypt/decrypt entire dictionaries
+encrypted = encrypt_vault({"API_KEY": "secret123"}, key="my-passphrase")
+decrypted = decrypt_vault(encrypted, key="my-passphrase")
+```
+
+## Workspace / Monorepo Support
+
+Load config across monorepo packages:
+
+```python
+from dotlyte import load_workspace, find_monorepo_root
+
+info = find_monorepo_root()  # Detects pnpm, turbo, nx, lerna, npm/yarn workspaces
+config = load_workspace(packages=["apps/web"], prefix="APP")
+```
+
+## CLI
+
+```bash
+pip install dotlyte
+
+dotlyte check              # Validate .env against schema
+dotlyte diff .env .env.prod  # Compare two env files
+dotlyte generate-types     # Generate Python TypedDict from .env
+dotlyte encrypt .env       # Encrypt sensitive values
+dotlyte doctor             # Diagnose config issues
+dotlyte init               # Create starter files
+```
+
 ## API
 
 ### `load(**options) → Config`
