@@ -7,7 +7,7 @@ API keys, etc.) and provides redaction utilities.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Callable
 
 REDACTED = "***REDACTED***"
 
@@ -113,3 +113,154 @@ def _format_lines(
             _format_lines(value, lines, full_key)
         else:
             lines.append(f"{full_key}={value}")
+
+
+# ──── Enhanced masking (v0.1.2) ────
+
+
+def compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
+    """Compile glob-like patterns into regular expressions.
+
+    Supported wildcards:
+
+    * ``*`` — matches any sequence of characters.
+    * Literal strings are matched case-insensitively.
+
+    Args:
+        patterns: Glob-like patterns (e.g. ``["*_KEY", "*_SECRET"]``).
+
+    Returns:
+        A list of compiled ``re.Pattern`` objects.
+
+    Example:
+        >>> compile_patterns(["*_KEY", "DATABASE_*"])
+        [re.compile('^.*_KEY$', re.IGNORECASE), ...]
+
+    """
+    compiled: list[re.Pattern[str]] = []
+    for p in patterns:
+        escaped = re.escape(p).replace(r"\*", ".*")
+        compiled.append(re.compile(f"^{escaped}$", re.I))
+    return compiled
+
+
+def build_sensitive_set_with_patterns(
+    all_keys: set[str],
+    patterns: list[str],
+    schema_sensitive: set[str] | None = None,
+) -> set[str]:
+    """Build a sensitive key set using custom glob patterns.
+
+    Checks each key (and its leaf component for dotted keys) against the
+    compiled patterns **and** the built-in auto-detection patterns.
+
+    Args:
+        all_keys: All configuration key names.
+        patterns: Glob-like patterns (e.g. ``["*_KEY", "SECRET_*"]``).
+        schema_sensitive: Keys explicitly marked sensitive in the schema.
+
+    Returns:
+        Combined set of sensitive keys.
+
+    """
+    result = set(schema_sensitive or set())
+    compiled = compile_patterns(patterns)
+
+    for key in all_keys:
+        leaf = key.rsplit(".", 1)[-1] if "." in key else key
+
+        # Custom patterns
+        if any(rx.search(leaf) or rx.search(key) for rx in compiled):
+            result.add(key)
+
+        # Built-in auto-detection
+        for pat in _SENSITIVE_PATTERNS:
+            if pat.search(leaf):
+                result.add(key)
+                break
+
+    return result
+
+
+class AuditProxy:
+    """Read-only wrapper that fires a callback on sensitive key access.
+
+    Args:
+        data: The underlying config dict.
+        sensitive_keys: Set of keys that trigger the callback.
+        on_access: Called with ``(key, context)`` when a sensitive key is read.
+
+    """
+
+    def __init__(
+        self,
+        data: dict[str, Any],
+        sensitive_keys: set[str],
+        on_access: Callable[[str, str], None],
+    ) -> None:
+        object.__setattr__(self, "_data", dict(data))
+        object.__setattr__(self, "_sensitive_keys", set(sensitive_keys))
+        object.__setattr__(self, "_on_access", on_access)
+
+    def __getitem__(self, key: str) -> Any:
+        sensitive_keys: set[str] = object.__getattribute__(self, "_sensitive_keys")
+        if key in sensitive_keys:
+            on_access: Callable[[str, str], None] = object.__getattribute__(
+                self, "_on_access"
+            )
+            on_access(key, "server")
+
+        data: dict[str, Any] = object.__getattribute__(self, "_data")
+        return data[key]
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(
+                f"'{type(self).__name__}' has no attribute '{key}'"
+            ) from None
+
+    def __contains__(self, key: object) -> bool:
+        data: dict[str, Any] = object.__getattribute__(self, "_data")
+        return key in data
+
+    def __repr__(self) -> str:
+        data: dict[str, Any] = object.__getattribute__(self, "_data")
+        return f"AuditProxy(keys={sorted(data.keys())})"
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a value with an optional default.
+
+        Args:
+            key: The config key.
+            default: Returned if *key* is missing.
+
+        Returns:
+            The value or *default*.
+
+        """
+        data: dict[str, Any] = object.__getattribute__(self, "_data")
+        if key in data:
+            return self[key]
+        return default
+
+
+def create_audit_proxy(
+    data: dict[str, Any],
+    sensitive_keys: set[str],
+    on_access: Callable[[str, str], None],
+) -> AuditProxy:
+    """Create a proxy that fires *on_access* when sensitive keys are read.
+
+    Args:
+        data: The config data.
+        sensitive_keys: Set of sensitive keys.
+        on_access: Callback fired as ``on_access(key, context)``.
+
+    Returns:
+        An ``AuditProxy`` wrapping the data.
+
+    """
+    return AuditProxy(data, sensitive_keys, on_access)
+

@@ -261,3 +261,146 @@ def decrypt_file(
             result[k] = v
 
     return result
+
+
+# ──── Enhanced encryption (v0.1.2) ────
+
+
+def rotate_keys(
+    data: dict[str, str],
+    old_key: str | bytes,
+    new_key: str | bytes,
+) -> dict[str, str]:
+    """Re-encrypt all encrypted values with a new key.
+
+    Decrypts each ``ENC[...]`` value using *old_key* and re-encrypts it
+    with *new_key*.  Non-encrypted values pass through unchanged.
+
+    Args:
+        data: Dictionary of key-value pairs (values may be ``ENC[...]``).
+        old_key: The current passphrase or derived key.
+        new_key: The new passphrase or derived key.
+
+    Returns:
+        A new dict with re-encrypted values.
+
+    Raises:
+        DecryptionError: If an encrypted value cannot be decrypted with *old_key*.
+
+    """
+    import re
+
+    old_derived = _ensure_key(old_key)
+    new_derived = _ensure_key(new_key)
+
+    result: dict[str, str] = {}
+    for k, v in data.items():
+        if re.match(_ENCRYPTED_PATTERN_STR, v):
+            try:
+                plaintext = decrypt_value(v, old_derived)
+                result[k] = encrypt_value(plaintext, new_derived)
+            except Exception as exc:
+                raise DecryptionError(
+                    f"Failed to rotate key for '{k}'. "
+                    f"Check that the old key is correct.",
+                    file_path="<rotate>",
+                ) from exc
+        else:
+            result[k] = v
+
+    return result
+
+
+def resolve_key_with_fallback(
+    keys: list[str],
+    encrypted_value: str,
+) -> bytes | None:
+    """Try multiple passphrases and return the first one that decrypts.
+
+    Useful during key rotation periods when both old and new keys may be
+    in use.
+
+    Args:
+        keys: Passphrases to try, in priority order.
+        encrypted_value: An ``ENC[...]`` value to test against.
+
+    Returns:
+        The derived key bytes for the first successful passphrase,
+        or ``None`` if none work.
+
+    """
+    for passphrase in keys:
+        derived = _derive_key(passphrase)
+        try:
+            decrypt_value(encrypted_value, derived)
+            return derived
+        except Exception:
+            continue
+    return None
+
+
+def encrypt_vault(
+    data: dict[str, str],
+    key: str | bytes,
+    sensitive_keys: set[str] | None = None,
+) -> dict[str, str]:
+    """Encrypt values in a dictionary.
+
+    If *sensitive_keys* is provided, only those keys are encrypted;
+    otherwise **all** values are encrypted.
+
+    Args:
+        data: Plain key-value pairs.
+        key: Passphrase or derived key.
+        sensitive_keys: Optional subset of keys to encrypt.
+
+    Returns:
+        A new dict with encrypted values.
+
+    """
+    derived = _ensure_key(key)
+    result: dict[str, str] = {}
+    for k, v in data.items():
+        if sensitive_keys is not None and k not in sensitive_keys:
+            result[k] = v
+        else:
+            result[k] = encrypt_value(v, derived)
+    return result
+
+
+def decrypt_vault(
+    data: dict[str, str],
+    key: str | bytes,
+) -> dict[str, str]:
+    """Decrypt all ``ENC[...]`` values in a dictionary.
+
+    Non-encrypted values pass through unchanged.
+
+    Args:
+        data: Dictionary that may contain ``ENC[...]`` values.
+        key: Passphrase or derived key.
+
+    Returns:
+        A new dict with decrypted values.
+
+    Raises:
+        DecryptionError: If any encrypted value cannot be decrypted.
+
+    """
+    import re
+
+    derived = _ensure_key(key)
+    result: dict[str, str] = {}
+    for k, v in data.items():
+        if re.match(_ENCRYPTED_PATTERN_STR, v):
+            result[k] = decrypt_value(v, derived)
+        else:
+            result[k] = v
+    return result
+
+
+def _ensure_key(key: str | bytes) -> bytes:
+    """Return derived key bytes from a passphrase or pass through raw bytes."""
+    if isinstance(key, bytes) and len(key) == _KEY_LENGTH:
+        return key
+    return _derive_key(key)
