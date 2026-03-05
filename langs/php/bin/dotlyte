@@ -1,0 +1,119 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * dotlyte CLI — Simple command-line helper for the dotlyte PHP library.
+ *
+ * Usage:
+ *   dotlyte dump          Dump resolved config as JSON
+ *   dotlyte get <key>     Get a single key
+ *   dotlyte validate      Validate current config
+ *   dotlyte version       Print version
+ */
+
+// Find autoloader
+$autoloaders = [
+    __DIR__ . '/../vendor/autoload.php',         // installed as project dep
+    __DIR__ . '/../../../autoload.php',           // installed as global dep
+];
+
+$loaded = false;
+foreach ($autoloaders as $autoloader) {
+    if (file_exists($autoloader)) {
+        require $autoloader;
+        $loaded = true;
+        break;
+    }
+}
+
+if (! $loaded) {
+    fwrite(STDERR, "dotlyte: could not find Composer autoloader.\n");
+    exit(1);
+}
+
+use Dotlyte\Dotlyte;
+use Dotlyte\DotlyteException;
+
+$args = array_slice($argv, 1);
+$command = $args[0] ?? 'help';
+
+try {
+    match ($command) {
+        'version' => printVersion(),
+        'dump'    => dumpConfig(),
+        'get'     => getKey($args[1] ?? null),
+        'validate' => validateConfig(),
+        default   => printHelp(),
+    };
+} catch (DotlyteException $e) {
+    fwrite(STDERR, "dotlyte error: {$e->getMessage()}\n");
+    exit(1);
+}
+
+function printVersion(): void
+{
+    echo "dotlyte 0.1.2 (PHP)\n";
+}
+
+function printHelp(): void
+{
+    echo <<<HELP
+    dotlyte — universal configuration loader
+
+    Commands:
+      dump        Dump resolved config as JSON
+      get <key>   Get a single key value
+      validate    Validate current config
+      version     Print version
+      help        Show this message
+
+    HELP;
+}
+
+function dumpConfig(): void
+{
+    $config = Dotlyte::load();
+    echo $config->toJson() . "\n";
+}
+
+function getKey(?string $key): void
+{
+    if ($key === null) {
+        fwrite(STDERR, "Usage: dotlyte get <key>\n");
+        exit(1);
+    }
+
+    $config = Dotlyte::load();
+    $value = $config->get($key);
+
+    if ($value === null) {
+        fwrite(STDERR, "Key '{$key}' not found.\n");
+        exit(1);
+    }
+
+    if (is_array($value)) {
+        echo json_encode($value, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";
+    } elseif (is_bool($value)) {
+        echo ($value ? 'true' : 'false') . "\n";
+    } else {
+        echo $value . "\n";
+    }
+}
+
+function validateConfig(): void
+{
+    $config = Dotlyte::load();
+    $violations = $config->validate();
+
+    if (empty($violations)) {
+        echo "Config is valid.\n";
+    } else {
+        fwrite(STDERR, "Validation errors:\n");
+        foreach ($violations as $v) {
+            fwrite(STDERR, "  - {$v}\n");
+        }
+        exit(1);
+    }
+}
