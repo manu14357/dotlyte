@@ -12,6 +12,9 @@ require "dotlyte/masking"
 require "dotlyte/config"
 require "dotlyte/loader"
 require "dotlyte/watcher"
+require "dotlyte/typed_config"
+require "dotlyte/boundary_config"
+require "dotlyte/workspace"
 
 # DOTLYTE — The universal configuration library (v2).
 #

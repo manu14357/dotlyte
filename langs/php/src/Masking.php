@@ -81,6 +81,84 @@ final class Masking
         return substr($value, 0, 2) . str_repeat('*', strlen($value) - 2);
     }
 
+    // ── v0.1.2 additions ─────────────────────────────────────────
+
+    /**
+     * Compile glob-like patterns into regex patterns.
+     *
+     * Supports `*` (any non-dot segment) and `**` (any depth).
+     *
+     * @param list<string> $patterns  Glob patterns such as "db.*", "**password**"
+     * @return list<string>           Compiled regex patterns (without delimiters)
+     */
+    public static function compilePatterns(array $patterns): array
+    {
+        $result = [];
+        foreach ($patterns as $pattern) {
+            // Escape regex-special chars except our glob tokens
+            $escaped = preg_quote($pattern, '/');
+            // Restore escaped glob tokens and convert
+            $escaped = str_replace('\*\*', '@@DOUBLESTAR@@', $escaped);
+            $escaped = str_replace('\*', '[^.]*', $escaped);
+            $escaped = str_replace('@@DOUBLESTAR@@', '.*', $escaped);
+            $result[] = '/^' . $escaped . '$/';
+        }
+        return $result;
+    }
+
+    /**
+     * Build the sensitive-key set using explicit keys, glob patterns, and schema flags.
+     *
+     * @param list<string> $keys             Flat keys from the data
+     * @param list<string> $patterns         Glob patterns (compiled with compilePatterns)
+     * @param list<string> $schemaSensitive  Keys marked sensitive in a schema
+     * @return list<string>
+     */
+    public static function buildSensitiveSetWithPatterns(
+        array $keys,
+        array $patterns = [],
+        array $schemaSensitive = [],
+    ): array {
+        $set = array_flip($schemaSensitive);
+
+        // Auto-detect via built-in patterns
+        foreach ($keys as $key) {
+            foreach (self::SENSITIVE_PATTERNS as $regex) {
+                if (preg_match($regex, $key)) {
+                    $set[$key] = true;
+                    break;
+                }
+            }
+        }
+
+        // Apply user-supplied glob patterns
+        if (!empty($patterns)) {
+            $compiled = self::compilePatterns($patterns);
+            foreach ($keys as $key) {
+                foreach ($compiled as $regex) {
+                    if (preg_match($regex, $key)) {
+                        $set[$key] = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return array_keys($set);
+    }
+
+    /**
+     * Create an ArrayAccess proxy that triggers $onAccess on every read.
+     *
+     * @param array<string, mixed> $data
+     * @param list<string>         $sensitiveKeys
+     * @param callable             $onAccess fn(string $key, mixed $value, bool $isSensitive): void
+     */
+    public static function createAuditProxy(array $data, array $sensitiveKeys, callable $onAccess): AuditProxy
+    {
+        return new AuditProxy($data, $sensitiveKeys, $onAccess);
+    }
+
     /**
      * @param array<string, mixed> $data
      * @return list<string>

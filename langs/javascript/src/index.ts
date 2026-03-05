@@ -54,10 +54,29 @@ export type { DotlyteSchema, SchemaRule } from "./validator.js";
 export type { SchemaViolation } from "./errors.js";
 export type { ChangeEvent, ChangeCallback, KeyChangeCallback, ErrorCallback } from "./watcher.js";
 
+// Typed Config (Feature #1)
+export { createTypedConfig } from "./typed.js";
+export type { FieldDescriptor, TypedConfigOptions, SectionedSchema, InferConfig, InferTypedConfig } from "./typed.js";
+
+// Server/Client Boundaries (Feature #2)
+export { createBoundaryProxy, isClientContext, isServerContext } from "./boundaries.js";
+export type { ServerEnv, ClientEnv, SharedEnv } from "./boundaries.js";
+
+// Workspace / Monorepo (Feature #8)
+export { loadWorkspace, findMonorepoRoot, getSharedEnv, generateTurboEnvConfig } from "./workspace.js";
+export type { WorkspaceOptions, MonorepoInfo } from "./workspace.js";
+
 // Utilities (re-exported for advanced use cases)
 export { coerce, coerceObject } from "./coercion.js";
 export { interpolate } from "./interpolation.js";
 export { validateSchema, assertValid, applySchemaDefaults, getSensitiveKeys } from "./validator.js";
-export { encryptFile, decryptFile, encryptValue, decryptValue, generateKey, resolveEncryptionKey } from "./encryption.js";
-export { redactObject, buildSensitiveSet, REDACTED, formatRedacted } from "./masking.js";
+export {
+  encryptFile, decryptFile, encryptValue, decryptValue, generateKey, resolveEncryptionKey,
+  rotateKeys, resolveKeyWithFallback, decryptVault, encryptForVault,
+} from "./encryption.js";
+export {
+  redactObject, buildSensitiveSet, REDACTED, formatRedacted,
+  compilePatterns, buildSensitiveSetWithPatterns, createAuditProxy,
+} from "./masking.js";
+export type { SecretAccessCallback } from "./masking.js";
 export { ConfigWatcher } from "./watcher.js";

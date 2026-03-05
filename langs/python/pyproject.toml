@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dotlyte"
-version = "0.1.1"
+version = "0.1.2"
 description = "The universal .env and configuration library. One API for every language."
 readme = "README.md"
 license = "MIT"
@@ -40,6 +40,9 @@ dev = [
     "mypy>=1.13",
     "cryptography>=42.0",
 ]
+
+[project.scripts]
+dotlyte = "dotlyte.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/dotlyte-io/dotlyte"

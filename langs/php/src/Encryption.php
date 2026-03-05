@@ -173,4 +173,151 @@ final class Encryption
 
         return null;
     }
+
+    // ── v0.1.2 additions ─────────────────────────────────────────
+
+    /**
+     * Re-encrypt all encrypted values in $data from $oldKey to $newKey.
+     *
+     * Non-encrypted values pass through unchanged.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     *
+     * @throws DotlyteException
+     */
+    public static function rotateKeys(array $data, string $oldKey, string $newKey): array
+    {
+        $result = [];
+        foreach ($data as $k => $v) {
+            if (is_array($v)) {
+                $result[$k] = self::rotateKeys($v, $oldKey, $newKey);
+            } elseif (self::isEncrypted($v)) {
+                $plain = self::decryptValue($v, $oldKey);
+                $result[$k] = self::encryptValue($plain, $newKey);
+            } else {
+                $result[$k] = $v;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Try multiple keys to decrypt a single value; return the first that works.
+     *
+     * @param list<string> $keys  Hex-encoded keys to try in order
+     * @return string|null  The key that decrypted the value, or null
+     */
+    public static function resolveKeyWithFallback(array $keys, string $encryptedValue): ?string
+    {
+        foreach ($keys as $key) {
+            try {
+                self::decryptValue($encryptedValue, $key);
+                return $key;
+            } catch (\Throwable) {
+                // Try the next key
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Encrypt an entire associative array ("vault").
+     *
+     * If $sensitiveKeys is provided, only those keys are encrypted;
+     * otherwise every leaf value is encrypted.
+     *
+     * @param array<string, mixed> $data
+     * @param list<string>|null    $sensitiveKeys  Dot-notation keys to encrypt (null = all)
+     * @return array<string, mixed>
+     *
+     * @throws DotlyteException
+     */
+    public static function encryptVault(array $data, string $key, ?array $sensitiveKeys = null): array
+    {
+        if ($sensitiveKeys === null) {
+            return self::encryptArrayAll($data, $key);
+        }
+
+        $result = $data;
+        foreach ($sensitiveKeys as $sk) {
+            $val = self::getNested($result, $sk);
+            if ($val !== null && is_string($val) && !self::isEncrypted($val)) {
+                self::setNested($result, $sk, self::encryptValue($val, $key));
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Decrypt an entire vault (alias of decryptArray with a friendlier name).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     *
+     * @throws DotlyteException
+     */
+    public static function decryptVault(array $data, string $key): array
+    {
+        return self::decryptArray($data, $key);
+    }
+
+    // ── private helpers ──────────────────────────────────────────
+
+    /**
+     * Encrypt every leaf string in an array recursively.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function encryptArrayAll(array $data, string $keyHex): array
+    {
+        $result = [];
+        foreach ($data as $k => $v) {
+            if (is_array($v)) {
+                $result[$k] = self::encryptArrayAll($v, $keyHex);
+            } elseif (is_string($v)) {
+                $result[$k] = self::encryptValue($v, $keyHex);
+            } else {
+                $result[$k] = $v;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Get a nested value via dot-notation.
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function getNested(array $data, string $key): mixed
+    {
+        $parts = explode('.', $key);
+        $current = $data;
+        foreach ($parts as $part) {
+            if (!is_array($current) || !array_key_exists($part, $current)) {
+                return null;
+            }
+            $current = $current[$part];
+        }
+        return $current;
+    }
+
+    /**
+     * Set a nested value via dot-notation.
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function setNested(array &$data, string $key, mixed $value): void
+    {
+        $parts = explode('.', $key);
+        $current = &$data;
+        for ($i = 0, $len = count($parts) - 1; $i < $len; $i++) {
+            if (!isset($current[$parts[$i]]) || !is_array($current[$parts[$i]])) {
+                $current[$parts[$i]] = [];
+            }
+            $current = &$current[$parts[$i]];
+        }
+        $current[$parts[count($parts) - 1]] = $value;
+    }
 }

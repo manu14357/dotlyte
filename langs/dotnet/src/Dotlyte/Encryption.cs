@@ -154,4 +154,106 @@ public static class Encryption
 
         return null;
     }
+
+    /// <summary>
+    /// Re-encrypt all values from an old key to a new key.
+    /// Only values matching the ENC[...] format are re-encrypted.
+    /// </summary>
+    /// <param name="data">Dictionary of potentially encrypted string values.</param>
+    /// <param name="oldKey">The current encryption key (hex).</param>
+    /// <param name="newKey">The new encryption key (hex).</param>
+    /// <returns>A new dictionary with values re-encrypted under the new key.</returns>
+    /// <exception cref="DotlyteException">Thrown on decryption or encryption failure.</exception>
+    public static Dictionary<string, string> RotateKeys(
+        Dictionary<string, string> data, string oldKey, string newKey)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var (k, v) in data)
+        {
+            if (IsEncrypted(v))
+            {
+                var plaintext = DecryptValue(v, oldKey);
+                result[k] = EncryptValue(plaintext, newKey);
+            }
+            else
+            {
+                result[k] = v;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Attempt to decrypt a value using a list of candidate keys.
+    /// Returns the decrypted value from the first key that succeeds, or <c>null</c> if none work.
+    /// </summary>
+    /// <param name="keys">Array of hex-encoded encryption keys to try.</param>
+    /// <param name="encryptedValue">The ENC[...] encrypted value.</param>
+    /// <returns>The decrypted plaintext, or <c>null</c> if no key succeeded.</returns>
+    public static string? ResolveKeyWithFallback(string[] keys, string encryptedValue)
+    {
+        foreach (var key in keys)
+        {
+            try
+            {
+                return DecryptValue(encryptedValue, key);
+            }
+            catch (DotlyteException)
+            {
+                // Try next key
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Encrypt all values in a dictionary, optionally limited to sensitive keys only.
+    /// </summary>
+    /// <param name="data">The plaintext key-value pairs.</param>
+    /// <param name="key">The hex-encoded encryption key.</param>
+    /// <param name="sensitiveKeys">If provided, only these keys are encrypted; others pass through.</param>
+    /// <returns>A new dictionary with encrypted values.</returns>
+    public static Dictionary<string, string> EncryptVault(
+        Dictionary<string, string> data, string key, HashSet<string>? sensitiveKeys = null)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var (k, v) in data)
+        {
+            if (sensitiveKeys is null || sensitiveKeys.Contains(k))
+            {
+                result[k] = EncryptValue(v, key);
+            }
+            else
+            {
+                result[k] = v;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Decrypt all ENC[...] values in a string dictionary.
+    /// Non-encrypted values pass through unchanged.
+    /// </summary>
+    /// <param name="data">The dictionary with potentially encrypted values.</param>
+    /// <param name="key">The hex-encoded encryption key.</param>
+    /// <returns>A new dictionary with all values decrypted.</returns>
+    /// <exception cref="DecryptionException">Thrown when a value cannot be decrypted.</exception>
+    public static Dictionary<string, string> DecryptVault(
+        Dictionary<string, string> data, string key)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var (k, v) in data)
+        {
+            if (IsEncrypted(v))
+            {
+                result[k] = DecryptValue(v, key);
+            }
+            else
+            {
+                result[k] = v;
+            }
+        }
+        return result;
+    }
 }

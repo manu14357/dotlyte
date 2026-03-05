@@ -1,6 +1,6 @@
 {
     "name": "dotlyte/dotlyte",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "The universal .env and configuration library for PHP — load, validate, encrypt, interpolate, and watch config from any source.",
     "type": "library",
     "license": "MIT",
@@ -25,6 +25,7 @@
             "Dotlyte\\Tests\\": "tests/"
         }
     },
+    "bin": ["bin/dotlyte"],
     "scripts": {
         "test": "phpunit",
         "analyse": "phpstan analyse"

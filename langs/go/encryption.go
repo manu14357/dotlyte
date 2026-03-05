@@ -257,3 +257,205 @@ func deriveKey(keyStr string) ([]byte, error) {
 	}
 	return derived, nil
 }
+
+// RotateKeys re-encrypts all values in a map from an old key to a new key.
+// Both oldKey and newKey are raw key bytes (32 bytes for AES-256).
+// Returns a new map with all values re-encrypted under the new key.
+func RotateKeys(data map[string]string, oldKey, newKey []byte) (map[string]string, error) {
+	result := make(map[string]string, len(data))
+	for k, v := range data {
+		if !IsEncrypted(v) {
+			result[k] = v
+			continue
+		}
+		// Decrypt with old key
+		plaintext, err := decryptValueRaw(v, oldKey)
+		if err != nil {
+			return nil, &DecryptionError{
+				DotlyteError: DotlyteError{
+					Message: fmt.Sprintf("failed to rotate key for '%s': incorrect old key or corrupted data", k),
+					Code:    "KEY_ROTATION_FAILED",
+				},
+			}
+		}
+		// Re-encrypt with new key
+		encrypted, err := encryptValueRaw(plaintext, newKey)
+		if err != nil {
+			return nil, err
+		}
+		result[k] = encrypted
+	}
+	return result, nil
+}
+
+// ResolveKeyWithFallback tries multiple encryption keys against an encrypted
+// value and returns the first key that successfully decrypts it.
+// Useful during key rotation periods when both old and new keys may be in use.
+func ResolveKeyWithFallback(keys [][]byte, encryptedValue string) ([]byte, error) {
+	if !IsEncrypted(encryptedValue) {
+		return nil, &DecryptionError{
+			DotlyteError: DotlyteError{
+				Message: "value is not encrypted",
+				Code:    "NOT_ENCRYPTED",
+			},
+		}
+	}
+	for _, key := range keys {
+		_, err := decryptValueRaw(encryptedValue, key)
+		if err == nil {
+			return key, nil
+		}
+	}
+	return nil, &DecryptionError{
+		DotlyteError: DotlyteError{
+			Message: "none of the provided keys could decrypt the value",
+			Code:    "DECRYPTION_FAILED",
+		},
+	}
+}
+
+// EncryptVault encrypts a data map into a vault format. Only keys listed in
+// sensitiveKeys are encrypted; all others are stored as plaintext strings.
+// Returns a flat map of key → encrypted/plaintext string values.
+func EncryptVault(data map[string]interface{}, key []byte, sensitiveKeys map[string]bool) (map[string]string, error) {
+	result := make(map[string]string, len(data))
+	for k, v := range data {
+		strVal := fmt.Sprintf("%v", v)
+		if sensitiveKeys[k] {
+			encrypted, err := encryptValueRaw(strVal, key)
+			if err != nil {
+				return nil, fmt.Errorf("dotlyte: failed to encrypt vault key '%s': %w", k, err)
+			}
+			result[k] = encrypted
+		} else {
+			result[k] = strVal
+		}
+	}
+	return result, nil
+}
+
+// DecryptVault decrypts a vault map, decrypting all ENC[...] values.
+// Non-encrypted values pass through unchanged.
+func DecryptVault(data map[string]string, key []byte) (map[string]interface{}, error) {
+	result := make(map[string]interface{}, len(data))
+	for k, v := range data {
+		if IsEncrypted(v) {
+			decrypted, err := decryptValueRaw(v, key)
+			if err != nil {
+				return nil, &DecryptionError{
+					DotlyteError: DotlyteError{
+						Message: fmt.Sprintf("failed to decrypt vault key '%s': wrong key or corrupted data", k),
+						Code:    "DECRYPTION_FAILED",
+					},
+				}
+			}
+			result[k] = Coerce(decrypted)
+		} else {
+			result[k] = v
+		}
+	}
+	return result, nil
+}
+
+// encryptValueRaw encrypts plaintext using a raw 32-byte AES key.
+func encryptValueRaw(plaintext string, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", &DecryptionError{
+			DotlyteError: DotlyteError{
+				Message: fmt.Sprintf("failed to create cipher: %v", err),
+				Code:    "ENCRYPTION_FAILED",
+			},
+		}
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", &DecryptionError{
+			DotlyteError: DotlyteError{
+				Message: fmt.Sprintf("failed to create GCM: %v", err),
+				Code:    "ENCRYPTION_FAILED",
+			},
+		}
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", &DecryptionError{
+			DotlyteError: DotlyteError{
+				Message: fmt.Sprintf("failed to generate nonce: %v", err),
+				Code:    "ENCRYPTION_FAILED",
+			},
+		}
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(plaintext), nil)
+	tag := ciphertext[len(ciphertext)-gcm.Overhead():]
+	data := ciphertext[:len(ciphertext)-gcm.Overhead()]
+
+	return fmt.Sprintf("%siv:%s,data:%s,tag:%s%s",
+		encPrefix,
+		base64.StdEncoding.EncodeToString(nonce),
+		base64.StdEncoding.EncodeToString(data),
+		base64.StdEncoding.EncodeToString(tag),
+		encSuffix,
+	), nil
+}
+
+// decryptValueRaw decrypts using a raw 32-byte AES key.
+func decryptValueRaw(encrypted string, key []byte) (string, error) {
+	if !IsEncrypted(encrypted) {
+		return encrypted, nil
+	}
+
+	inner := encrypted[len(encPrefix) : len(encrypted)-len(encSuffix)]
+	parts := make(map[string]string)
+	for _, segment := range strings.Split(inner, ",") {
+		kv := strings.SplitN(segment, ":", 2)
+		if len(kv) == 2 {
+			parts[kv[0]] = kv[1]
+		}
+	}
+
+	ivB64, ok := parts["iv"]
+	if !ok {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "missing iv", Code: "DECRYPTION_FAILED"}}
+	}
+	dataB64, ok := parts["data"]
+	if !ok {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "missing data", Code: "DECRYPTION_FAILED"}}
+	}
+	tagB64, ok := parts["tag"]
+	if !ok {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "missing tag", Code: "DECRYPTION_FAILED"}}
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(ivB64)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "invalid iv encoding", Code: "DECRYPTION_FAILED"}}
+	}
+	dataBytes, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "invalid data encoding", Code: "DECRYPTION_FAILED"}}
+	}
+	tag, err := base64.StdEncoding.DecodeString(tagB64)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: "invalid tag encoding", Code: "DECRYPTION_FAILED"}}
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: fmt.Sprintf("cipher error: %v", err), Code: "DECRYPTION_FAILED"}}
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{Message: fmt.Sprintf("GCM error: %v", err), Code: "DECRYPTION_FAILED"}}
+	}
+
+	ciphertext := append(dataBytes, tag...)
+	pt, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", &DecryptionError{DotlyteError: DotlyteError{
+			Message: "decryption failed — wrong key or corrupted data",
+			Code:    "DECRYPTION_FAILED",
+		}}
+	}
+	return string(pt), nil
+}

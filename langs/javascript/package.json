@@ -1,6 +1,6 @@
 {
   "name": "dotlyte",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The universal .env and configuration library. One API for every language.",
   "type": "module",
   "exports": {
@@ -8,7 +8,30 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "import": "./dist/next/index.js",
+      "require": "./dist/next/index.cjs"
+    },
+    "./ssr": {
+      "types": "./dist/ssr/index.d.ts",
+      "import": "./dist/ssr/index.js",
+      "require": "./dist/ssr/index.cjs"
+    },
+    "./zod": {
+      "types": "./dist/adapters/zod.d.ts",
+      "import": "./dist/adapters/zod.js",
+      "require": "./dist/adapters/zod.cjs"
+    },
+    "./valibot": {
+      "types": "./dist/adapters/valibot.d.ts",
+      "import": "./dist/adapters/valibot.js",
+      "require": "./dist/adapters/valibot.cjs"
     }
+  },
+  "bin": {
+    "dotlyte": "./dist/cli/index.js"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -35,7 +58,13 @@
     "env",
     "environment",
     "yaml",
-    "toml"
+    "toml",
+    "typescript",
+    "nextjs",
+    "zod",
+    "valibot",
+    "monorepo",
+    "cli"
   ],
   "author": "DOTLYTE Contributors",
   "license": "MIT",
@@ -53,6 +82,14 @@
   },
   "dependencies": {
     "yaml": "^2.7.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.0.0",
+    "valibot": ">=0.30.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": { "optional": true },
+    "valibot": { "optional": true }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

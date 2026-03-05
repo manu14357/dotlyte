@@ -109,3 +109,82 @@ export function formatRedacted(
   const redacted = redactObject(data, sensitive);
   return JSON.stringify(redacted, null, 2);
 }
+
+/* ──────── Configurable Sensitive Patterns ──────── */
+
+/**
+ * Convert glob-like patterns (e.g., "*_KEY", "DATABASE_*") to regex patterns.
+ *
+ * Supports:
+ *   - `*` → match anything
+ *   - Literal string matching (case-insensitive)
+ *
+ * @param patterns — array of glob patterns
+ * @returns Array of compiled RegExp patterns
+ */
+export function compilePatterns(patterns: string[]): RegExp[] {
+  return patterns.map((p) => {
+    const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\\*/g, ".*");
+    return new RegExp(`^${escaped}$`, "i");
+  });
+}
+
+/**
+ * Build a sensitive key set using custom patterns.
+ *
+ * @param allKeys   — all config keys (flat)
+ * @param patterns  — glob-like patterns (e.g., ["*_KEY", "*_SECRET", "DATABASE_*"])
+ * @param schemaSensitive — keys explicitly marked sensitive in schema
+ * @returns Set of matching sensitive keys
+ */
+export function buildSensitiveSetWithPatterns(
+  allKeys: string[],
+  patterns: string[],
+  schemaSensitive: Set<string> = new Set(),
+): Set<string> {
+  const result = new Set(schemaSensitive);
+  const compiled = compilePatterns(patterns);
+
+  for (const key of allKeys) {
+    const leaf = key.includes(".") ? key.split(".").pop()! : key;
+    // Check against custom patterns
+    if (compiled.some((re) => re.test(leaf) || re.test(key))) {
+      result.add(key);
+    }
+    // Also check built-in patterns
+    if (isAutoSensitive(leaf)) {
+      result.add(key);
+    }
+  }
+
+  return result;
+}
+
+/** Callback for secret access audit logging. */
+export type SecretAccessCallback = (key: string, context: string) => void;
+
+/**
+ * Create a Proxy that wraps a config object and fires audit callbacks
+ * when sensitive keys are accessed.
+ *
+ * @param data            — the config data
+ * @param sensitiveKeys   — set of sensitive keys
+ * @param onAccess        — callback fired each time a sensitive key is read
+ * @returns Proxied config object
+ */
+export function createAuditProxy(
+  data: Record<string, unknown>,
+  sensitiveKeys: Set<string>,
+  onAccess: SecretAccessCallback,
+): Record<string, unknown> {
+  return new Proxy(data, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string" && sensitiveKeys.has(prop)) {
+        const context = typeof (globalThis as Record<string, unknown>).window !== "undefined" ? "client" : "server";
+        onAccess(prop, context);
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
