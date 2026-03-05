@@ -116,5 +116,79 @@ module Dotlyte
 
       nil
     end
+
+    # Re-encrypt all encrypted values in a hash with a new key.
+    #
+    # @param data [Hash] hash potentially containing ENC[...] values
+    # @param old_key [String] current encryption key (hex)
+    # @param new_key [String] new encryption key (hex)
+    # @return [Hash] hash with values re-encrypted under new_key
+    # @raise [Dotlyte::Error] if decryption with old_key fails
+    def self.rotate_keys(data, old_key:, new_key:)
+      data.each_with_object({}) do |(k, v), result|
+        result[k] = if v.is_a?(Hash)
+                      rotate_keys(v, old_key: old_key, new_key: new_key)
+                    elsif encrypted?(v)
+                      plaintext = decrypt_value(v, old_key)
+                      encrypt_value(plaintext, new_key)
+                    else
+                      v
+                    end
+      end
+    end
+
+    # Try each key in order to decrypt a value. Returns the first working key or nil.
+    #
+    # @param keys [Array<String>] candidate encryption keys (hex)
+    # @param encrypted_value [String] the encrypted value to test
+    # @return [String, nil] the working key, or nil if none decrypt successfully
+    def self.resolve_key_with_fallback(keys, encrypted_value)
+      keys.each do |candidate|
+        begin
+          decrypt_value(encrypted_value, candidate)
+          return candidate
+        rescue DecryptionError, Error
+          next
+        end
+      end
+      nil
+    end
+
+    # Encrypt selected values in a hash (vault-style).
+    #
+    # @param data [Hash] plaintext hash
+    # @param key [String] encryption key (hex)
+    # @param sensitive_keys [Array<String>, Set<String>, nil] keys to encrypt (nil = all)
+    # @return [Hash] hash with encrypted values
+    def self.encrypt_vault(data, key:, sensitive_keys: nil)
+      targets = sensitive_keys ? Set.new(sensitive_keys) : nil
+
+      data.each_with_object({}) do |(k, v), result|
+        result[k] = if v.is_a?(Hash)
+                      encrypt_vault(v, key: key, sensitive_keys: sensitive_keys)
+                    elsif v.is_a?(String) && !encrypted?(v) && (targets.nil? || targets.include?(k))
+                      encrypt_value(v, key)
+                    else
+                      v
+                    end
+      end
+    end
+
+    # Decrypt all encrypted values in a hash (vault-style).
+    #
+    # @param data [Hash] hash with ENC[...] values
+    # @param key [String] encryption key (hex)
+    # @return [Hash] hash with all values decrypted
+    def self.decrypt_vault(data, key:)
+      data.each_with_object({}) do |(k, v), result|
+        result[k] = if v.is_a?(Hash)
+                      decrypt_vault(v, key: key)
+                    elsif encrypted?(v)
+                      decrypt_value(v, key)
+                    else
+                      v
+                    end
+      end
+    end
   end
 end
