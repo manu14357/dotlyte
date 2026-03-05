@@ -2,19 +2,20 @@
  * YAML config file parser for DOTLYTE.
  *
  * YAML support is optional; gracefully returns {} if no parser is available.
+ *
+ * Note: `require()` is available in CJS natively. For ESM, tsup injects a
+ * `require` shim via banner (see tsup.config.ts).
  */
 
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { ParseError } from "../errors.js";
-
-const require = createRequire(import.meta.url);
 
 export class YamlParser {
   constructor(private readonly filepath: string) {}
 
   parse(): Record<string, unknown> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const yaml = require("yaml");
       const content = readFileSync(this.filepath, "utf-8");
       const data = yaml.parse(content);
