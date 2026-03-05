@@ -393,3 +393,54 @@ go test -race ./...
 gofmt -l .
 go vet ./...
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```go
+config, err := dotlyte.CreateTypedConfig(map[string]dotlyte.FieldDescriptor{
+    "PORT": {Type: "integer", Required: true, Min: ptr(1.0), Max: ptr(65535.0)},
+    "DEBUG": {Type: "boolean", Default: false},
+    "LOG_LEVEL": {Type: "string", Enum: []string{"debug", "info", "warn", "error"}},
+}, nil)
+```
+
+### Boundary Config
+
+```go
+config, err := dotlyte.CreateBoundaryConfig(
+    []string{"DATABASE_URL", "API_SECRET"},
+    []string{"APP_NAME", "THEME"},
+    nil,
+)
+
+server := config.Server()
+client := config.Client() // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```go
+// Key rotation
+enc, _ := dotlyte.NewEncryption("my-secret-key-32-chars-long!!!!!")
+encrypted, _ := enc.Encrypt("secret")
+decrypted, _ := enc.Decrypt(encrypted)
+
+// Pattern-based masking
+m := dotlyte.NewMasking([]string{"API_KEY"})
+result := m.Mask(configMap)
+```
+
+### Workspace & CLI
+
+```go
+ws, err := dotlyte.DetectWorkspace()
+config, err := ws.LoadPackage("api")
+```
+
+```bash
+dotlyte check          # Validate config files
+dotlyte diff --env dev --env prod  # Compare environments
+dotlyte doctor         # Diagnose issues
+```

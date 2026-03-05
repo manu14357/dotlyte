@@ -426,3 +426,65 @@ cargo test
 cargo fmt --check
 cargo clippy -- -D warnings
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```rust
+use dotlyte::typed::{create_typed_config, FieldDescriptor};
+
+let schema = HashMap::from([
+    ("PORT".into(), FieldDescriptor {
+        field_type: "integer".into(),
+        required: true,
+        min: Some(1.0), max: Some(65535.0),
+        ..Default::default()
+    }),
+]);
+
+let config = create_typed_config(&schema, false)?;
+```
+
+### Boundary Config
+
+```rust
+use dotlyte::boundary::create_boundary_config;
+
+let config = create_boundary_config(
+    &["DATABASE_URL", "API_SECRET"],
+    &["APP_NAME", "THEME"],
+)?;
+
+let server = config.server();
+let client = config.client(); // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```rust
+use dotlyte::encryption::Encryption;
+use dotlyte::masking::Masking;
+
+let enc = Encryption::new("my-secret-key-32-chars-long!!!!!")?;
+let encrypted = enc.encrypt("secret")?;
+let decrypted = enc.decrypt(&encrypted)?;
+
+let m = Masking::new(&["API_KEY"]);
+let result = m.mask(&config_map);
+```
+
+### Workspace & CLI
+
+```rust
+use dotlyte::workspace::Workspace;
+
+let ws = Workspace::detect()?;
+let config = ws.load_package("api")?;
+```
+
+```bash
+dotlyte check          # Validate config files
+dotlyte diff --env dev --env prod  # Compare environments
+dotlyte doctor         # Diagnose issues
+```

@@ -346,3 +346,51 @@ bundle exec rspec
 # Lint (RuboCop)
 bundle exec rubocop
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```ruby
+config = Dotlyte::TypedConfig.create({
+  "PORT" => { type: "integer", required: true, min: 1, max: 65535 },
+  "DEBUG" => { type: "boolean", default: false },
+  "LOG_LEVEL" => { type: "string", enum: %w[debug info warn error] },
+})
+```
+
+### Boundary Config
+
+```ruby
+config = Dotlyte::BoundaryConfig.create(
+  server_keys: ["DATABASE_URL", "API_SECRET"],
+  client_keys: ["APP_NAME", "THEME"]
+)
+
+server = config.server
+client = config.client  # Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```ruby
+enc = Dotlyte::Encryption.new("my-secret-key-32-chars-long!!!!!")
+encrypted = enc.encrypt("secret")
+decrypted = enc.decrypt(encrypted)
+
+masking = Dotlyte::Masking.new(keys: ["API_KEY"])
+result = masking.mask(config_hash)
+```
+
+### Workspace & CLI
+
+```ruby
+ws = Dotlyte::Workspace.detect
+config = ws.load_package("api")
+```
+
+```bash
+dotlyte check          # Validate config files
+dotlyte diff --env dev --env prod  # Compare environments
+dotlyte doctor         # Diagnose issues
+```

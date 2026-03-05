@@ -1,0 +1,234 @@
+---
+title: Boundary Config
+description: Enforce server/client configuration boundaries to prevent secret leakage.
+icon: Lock
+---
+
+**Boundary Config** splits your configuration into `server` and `client` contexts, preventing accidental exposure of secrets to client-side code. Available in all 8 languages since v0.1.2.
+
+## The Problem
+
+In full-stack apps, it's easy to accidentally bundle server secrets into client JavaScript:
+
+```javascript
+// DANGEROUS — DATABASE_URL gets bundled into the browser!
+const config = load();
+console.log(config.get("DATABASE_URL"));
+```
+
+Boundary Config solves this by enforcing hard boundaries at the config layer.
+
+## Usage
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import BoundaryConfig
+
+    config = BoundaryConfig.create(
+        server_keys=["DATABASE_URL", "API_SECRET", "REDIS_URL"],
+        client_keys=["APP_NAME", "API_BASE_URL", "THEME"],
+    )
+
+    server = config.server()
+    server["DATABASE_URL"]  # ✅ Works
+
+    client = config.client()
+    client["APP_NAME"]      # ✅ Works
+    client["DATABASE_URL"]  # ❌ Raises DotlyteError
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { createBoundaryConfig } from "dotlyte/boundary";
+
+    const config = createBoundaryConfig({
+      serverKeys: ["DATABASE_URL", "API_SECRET", "REDIS_URL"],
+      clientKeys: ["APP_NAME", "API_BASE_URL", "THEME"],
+    });
+
+    const server = config.server();
+    server.get("DATABASE_URL"); // ✅
+
+    const client = config.client();
+    client.get("APP_NAME");      // ✅
+    client.get("DATABASE_URL");  // ❌ Throws DotlyteError
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    config, err := dotlyte.CreateBoundaryConfig(
+        []string{"DATABASE_URL", "API_SECRET"},
+        []string{"APP_NAME", "THEME"},
+        nil,
+    )
+
+    server := config.Server()
+    val, _ := server.Get("DATABASE_URL") // ✅
+
+    client := config.Client()
+    _, err := client.Get("DATABASE_URL") // ❌ Returns error
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::boundary::create_boundary_config;
+
+    let config = create_boundary_config(
+        &["DATABASE_URL", "API_SECRET"],
+        &["APP_NAME", "THEME"],
+    )?;
+
+    let server = config.server();
+    server.get("DATABASE_URL")?; // ✅
+
+    let client = config.client();
+    client.get("DATABASE_URL"); // ❌ Returns Err
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    import dev.dotlyte.BoundaryConfig;
+
+    var config = BoundaryConfig.create(
+        List.of("DATABASE_URL", "API_SECRET"),
+        List.of("APP_NAME", "THEME"),
+        null
+    );
+
+    var server = config.server();
+    server.get("DATABASE_URL"); // ✅
+
+    var client = config.client();
+    client.get("DATABASE_URL"); // ❌ Throws DotlyteException
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    config = Dotlyte::BoundaryConfig.create(
+      server_keys: ["DATABASE_URL", "API_SECRET"],
+      client_keys: ["APP_NAME", "THEME"]
+    )
+
+    server = config.server
+    server["DATABASE_URL"]  # ✅
+
+    client = config.client
+    client["DATABASE_URL"]  # ❌ Raises DotlyteError
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\BoundaryConfig;
+
+    $config = BoundaryConfig::create(
+        serverKeys: ['DATABASE_URL', 'API_SECRET'],
+        clientKeys: ['APP_NAME', 'THEME']
+    );
+
+    $server = $config->server();
+    $server->get('DATABASE_URL'); // ✅
+
+    $client = $config->client();
+    $client->get('DATABASE_URL'); // ❌ Throws DotlyteException
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    using Dotlyte;
+
+    var config = BoundaryConfig.Create(
+        serverKeys: ["DATABASE_URL", "API_SECRET"],
+        clientKeys: ["APP_NAME", "THEME"]
+    );
+
+    var server = config.Server();
+    server.Get("DATABASE_URL"); // ✅
+
+    var client = config.Client();
+    client.Get("DATABASE_URL"); // ❌ Throws DotlyteException
+    ```
+  </Tab>
+</Tabs>
+
+## How It Works
+
+1. **Define boundaries**: Specify which keys belong to the server and which to the client.
+2. **Load config**: Boundary Config loads all config values normally via `load()`.
+3. **Gate access**: `server()` returns a view allowing only server keys. `client()` returns a view allowing only client keys.
+4. **Hard fail**: Accessing a key from the wrong boundary throws a `DotlyteError` immediately.
+
+## API
+
+### `BoundaryConfig.create(options)`
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `server_keys` | `string[]` | Keys only accessible via `server()` |
+| `client_keys` | `string[]` | Keys only accessible via `client()` |
+| `load_options` | `LoadOptions` | Optional: standard DOTLYTE load options |
+
+### `config.server()`
+
+Returns a read-only config view restricted to server keys.
+
+### `config.client()`
+
+Returns a read-only config view restricted to client keys.
+
+### `config.all_keys()`
+
+Returns the full list of declared keys (both server and client).
+
+## Framework Integration
+
+### Next.js
+
+```typescript
+// lib/config.ts
+import { createBoundaryConfig } from "dotlyte/boundary";
+
+const boundary = createBoundaryConfig({
+  serverKeys: ["DATABASE_URL", "STRIPE_SECRET", "JWT_SECRET"],
+  clientKeys: ["NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_APP_NAME"],
+});
+
+export const serverConfig = boundary.server();
+export const clientConfig = boundary.client();
+```
+
+```typescript
+// app/api/route.ts (server)
+import { serverConfig } from "@/lib/config";
+serverConfig.get("DATABASE_URL"); // ✅
+```
+
+```typescript
+// components/Header.tsx (client)
+import { clientConfig } from "@/lib/config";
+clientConfig.get("NEXT_PUBLIC_APP_NAME"); // ✅
+```
+
+### Django
+
+```python
+# settings/config.py
+from dotlyte import BoundaryConfig
+
+boundary = BoundaryConfig.create(
+    server_keys=["SECRET_KEY", "DATABASE_URL", "REDIS_URL"],
+    client_keys=["SITE_NAME", "API_BASE_URL"],
+)
+
+server_config = boundary.server()
+client_config = boundary.client()
+```
+
+## Error Messages
+
+When a client accesses a server-only key:
+
+```
+Access denied: key 'DATABASE_URL' is not accessible from the client boundary.
+Server-only keys must be accessed via config.server().
+```

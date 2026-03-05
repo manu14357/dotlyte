@@ -354,3 +354,60 @@ vendor/bin/phpunit
 # Static analysis (PHPStan)
 vendor/bin/phpstan analyse
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```php
+use Dotlyte\TypedConfig;
+
+$config = TypedConfig::create([
+    'PORT' => ['type' => 'integer', 'required' => true, 'min' => 1, 'max' => 65535],
+    'DEBUG' => ['type' => 'boolean', 'default' => false],
+    'LOG_LEVEL' => ['type' => 'string', 'enum' => ['debug', 'info', 'warn', 'error']],
+]);
+```
+
+### Boundary Config
+
+```php
+use Dotlyte\BoundaryConfig;
+
+$config = BoundaryConfig::create(
+    serverKeys: ['DATABASE_URL', 'API_SECRET'],
+    clientKeys: ['APP_NAME', 'THEME']
+);
+
+$server = $config->server();
+$client = $config->client(); // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```php
+use Dotlyte\Encryption;
+use Dotlyte\Masking;
+
+$enc = new Encryption('my-secret-key-32-chars-long!!!!!');
+$encrypted = $enc->encrypt('secret');
+$decrypted = $enc->decrypt($encrypted);
+
+$masking = new Masking(keys: ['API_KEY']);
+$result = $masking->mask($configArray);
+```
+
+### Workspace & CLI
+
+```php
+use Dotlyte\Workspace;
+
+$ws = Workspace::detect();
+$config = $ws->loadPackage('api');
+```
+
+```bash
+vendor/bin/dotlyte check          # Validate config files
+vendor/bin/dotlyte diff --env dev --env prod  # Compare environments
+vendor/bin/dotlyte doctor         # Diagnose issues
+```

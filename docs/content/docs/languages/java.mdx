@@ -10,7 +10,7 @@ icon: Coffee
   <Tab value="Gradle (Kotlin DSL)">
     ```kotlin
     dependencies {
-        implementation("dev.dotlyte:dotlyte:0.1.1")
+        implementation("dev.dotlyte:dotlyte:0.1.2")
     }
     ```
   </Tab>
@@ -19,7 +19,7 @@ icon: Coffee
     <dependency>
         <groupId>dev.dotlyte</groupId>
         <artifactId>dotlyte</artifactId>
-        <version>0.1.1</version>
+        <version>0.1.2</version>
     </dependency>
     ```
   </Tab>
@@ -356,4 +356,56 @@ cd langs/java
 
 # Clean build
 ./gradlew clean build
+```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```java
+import dev.dotlyte.TypedConfig;
+
+var config = TypedConfig.create(Map.of(
+    "PORT", Map.of("type", "integer", "required", true, "min", 1, "max", 65535),
+    "DEBUG", Map.of("type", "boolean", "default", false),
+    "LOG_LEVEL", Map.of("type", "string", "enum", List.of("debug", "info", "warn", "error"))
+));
+```
+
+### Boundary Config
+
+```java
+import dev.dotlyte.BoundaryConfig;
+
+var config = BoundaryConfig.create(
+    List.of("DATABASE_URL", "API_SECRET"),
+    List.of("APP_NAME", "THEME"),
+    null
+);
+
+var server = config.server();
+var client = config.client(); // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```java
+import dev.dotlyte.Encryption;
+import dev.dotlyte.Masking;
+
+var enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+String encrypted = enc.encrypt("secret");
+String decrypted = enc.decrypt(encrypted);
+
+var masking = new Masking(List.of("API_KEY"));
+var result = masking.mask(configMap);
+```
+
+### Workspace & CLI
+
+```java
+import dev.dotlyte.Workspace;
+
+var ws = Workspace.detect();
+var config = ws.loadPackage("api");
 ```

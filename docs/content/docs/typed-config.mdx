@@ -1,0 +1,200 @@
+---
+title: Typed Config
+description: Schema-driven configuration with compile-time-like type safety and validation.
+icon: ShieldCheck
+---
+
+**Typed Config** provides schema-driven configuration loading with strict type validation, enum constraints, range checks, and sensitive field tracking. Available in all 8 languages since v0.1.2.
+
+## Overview
+
+Instead of loading raw config and casting manually, define a schema and let DOTLYTE validate and coerce everything for you:
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import TypedConfig
+
+    config = TypedConfig.create({
+        "PORT": {"type": "integer", "required": True, "min": 1, "max": 65535},
+        "DEBUG": {"type": "boolean", "default": False},
+        "LOG_LEVEL": {"type": "string", "enum": ["debug", "info", "warn", "error"], "default": "info"},
+        "API_KEY": {"type": "string", "required": True, "sensitive": True},
+    })
+
+    config["PORT"]      # 8080 (int, validated)
+    config["DEBUG"]     # False (bool, from default)
+    config["LOG_LEVEL"] # "info" (string, enum-checked)
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { createTypedConfig } from "dotlyte/typed";
+
+    const config = createTypedConfig({
+      PORT: { type: "integer", required: true, min: 1, max: 65535 },
+      DEBUG: { type: "boolean", default: false },
+      LOG_LEVEL: { type: "string", enum: ["debug", "info", "warn", "error"], default: "info" },
+      API_KEY: { type: "string", required: true, sensitive: true },
+    });
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    config, err := dotlyte.CreateTypedConfig(map[string]dotlyte.FieldDescriptor{
+        "PORT": {Type: "integer", Required: true, Min: ptr(1.0), Max: ptr(65535.0)},
+        "DEBUG": {Type: "boolean", Default: false},
+        "LOG_LEVEL": {Type: "string", Enum: []string{"debug", "info", "warn", "error"}, Default: "info"},
+        "API_KEY": {Type: "string", Required: true, Sensitive: true},
+    }, nil)
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::typed::{create_typed_config, FieldDescriptor};
+
+    let schema = HashMap::from([
+        ("PORT".into(), FieldDescriptor {
+            field_type: "integer".into(),
+            required: true,
+            min: Some(1.0), max: Some(65535.0),
+            ..Default::default()
+        }),
+        ("DEBUG".into(), FieldDescriptor {
+            field_type: "boolean".into(),
+            default: Some("false".into()),
+            ..Default::default()
+        }),
+    ]);
+
+    let config = create_typed_config(&schema, false)?;
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    import dev.dotlyte.TypedConfig;
+
+    var config = TypedConfig.create(Map.of(
+        "PORT", Map.of("type", "integer", "required", true, "min", 1, "max", 65535),
+        "DEBUG", Map.of("type", "boolean", "default", false),
+        "LOG_LEVEL", Map.of("type", "string", "enum", List.of("debug", "info", "warn", "error"))
+    ));
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    config = Dotlyte::TypedConfig.create({
+      "PORT" => { type: "integer", required: true, min: 1, max: 65535 },
+      "DEBUG" => { type: "boolean", default: false },
+      "LOG_LEVEL" => { type: "string", enum: %w[debug info warn error], default: "info" },
+    })
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\TypedConfig;
+
+    $config = TypedConfig::create([
+        'PORT' => ['type' => 'integer', 'required' => true, 'min' => 1, 'max' => 65535],
+        'DEBUG' => ['type' => 'boolean', 'default' => false],
+        'LOG_LEVEL' => ['type' => 'string', 'enum' => ['debug', 'info', 'warn', 'error']],
+    ]);
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    using Dotlyte;
+
+    var config = TypedConfig.Create(new Dictionary<string, FieldDescriptor>
+    {
+        ["PORT"] = new() { Type = "integer", Required = true, Min = 1, Max = 65535 },
+        ["DEBUG"] = new() { Type = "boolean", Default = false },
+        ["LOG_LEVEL"] = new() { Type = "string", Enum = ["debug", "info", "warn", "error"] },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Field Descriptor
+
+Each key in the schema maps to a **FieldDescriptor** with these properties:
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `type` | `string` | `"string"` | One of: `"string"`, `"integer"`, `"float"`, `"boolean"`, `"array"` |
+| `required` | `boolean` | `false` | Throw if the key is missing from env |
+| `default` | `any` | — | Fallback value when env var is not set |
+| `enum` | `string[]` | — | Allowed values (post-coercion for strings) |
+| `min` | `number` | — | Minimum value (for `integer` and `float`) |
+| `max` | `number` | — | Maximum value (for `integer` and `float`) |
+| `sensitive` | `boolean` | `false` | Marks the field as containing a secret |
+| `doc` | `string` | — | Human-readable documentation for this field |
+
+## Type Coercion
+
+Typed Config reads from environment variables (strings) and coerces them:
+
+| Type | Input | Output |
+|------|-------|--------|
+| `integer` | `"8080"` | `8080` |
+| `float` | `"3.14"` | `3.14` |
+| `boolean` | `"true"`, `"yes"`, `"1"`, `"on"` | `true` |
+| `boolean` | `"false"`, `"no"`, `"0"`, `"off"` | `false` |
+| `array` | `"a,b,c"` | `["a", "b", "c"]` |
+| `string` | `"hello"` | `"hello"` |
+
+## Validation
+
+Typed Config validates after coercion:
+
+- **Required check**: throws if the key is missing and has no default
+- **Enum check**: throws if the coerced value is not in the allowed list
+- **Min/Max check**: throws if the numeric value is out of range
+- **Type check**: throws if the raw value cannot be coerced to the target type
+
+All validation errors are collected and thrown as a single `DotlyteError` with all messages.
+
+### Skip Validation
+
+Pass `skip_validation: true` to bypass validation (useful for testing):
+
+```python
+config = TypedConfig.create(schema, skip_validation=True)
+```
+
+## Sensitive Field Tracking
+
+Fields marked `sensitive: true` integrate with the audit callback:
+
+```python
+accessed = []
+config = TypedConfig.create(
+    {"API_KEY": {"type": "string", "sensitive": True}},
+    on_secret_access=lambda key: accessed.append(key),
+)
+
+config["API_KEY"]  # Triggers the callback
+print(accessed)    # ["API_KEY"]
+```
+
+This is useful for audit logging — know exactly when and where secrets are read.
+
+## Error Messages
+
+Typed Config produces clear, actionable error messages:
+
+```
+Required config key 'DATABASE_URL' is missing. Set it as an environment variable.
+```
+
+```
+Config key 'LOG_LEVEL': value 'verbose' is not in allowed values: debug, info, warn, error
+```
+
+```
+Config key 'PORT': value 0 is less than minimum 1
+```
+
+```
+Config key 'PORT': cannot convert 'abc' to integer
+```

@@ -1,0 +1,202 @@
+---
+title: CLI
+description: Command-line tool for managing, validating, and debugging configuration.
+icon: Terminal
+---
+
+**DOTLYTE CLI** is a command-line tool for inspecting, validating, encrypting, and debugging your configuration files. Available in all 8 language implementations since v0.1.2.
+
+## Installation
+
+The CLI is included with each language package:
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```bash
+    pip install dotlyte
+    dotlyte --help
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```bash
+    pnpm add dotlyte
+    npx dotlyte --help
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```bash
+    go install github.com/manu14357/dotlyte/cmd/dotlyte@latest
+    dotlyte --help
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```bash
+    cargo install dotlyte
+    dotlyte --help
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```bash
+    # Via Gradle task
+    ./gradlew dotlyte --args="--help"
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```bash
+    gem install dotlyte
+    dotlyte --help
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```bash
+    composer require dotlyte/dotlyte
+    vendor/bin/dotlyte --help
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```bash
+    dotnet tool install -g Dotlyte.Cli
+    dotlyte --help
+    ```
+  </Tab>
+</Tabs>
+
+## Commands
+
+### `dotlyte check`
+
+Validate your configuration files against a schema or basic sanity checks.
+
+```bash
+dotlyte check
+```
+
+```
+✓ .env — 12 keys loaded
+✓ config.yaml — valid YAML, 8 keys
+✓ config.production.yaml — valid YAML, 3 overrides
+✗ .env.local — line 5: missing value for key 'EMPTY_KEY='
+```
+
+Options:
+- `--schema <file>` — validate against a TypedConfig schema file
+- `--env <name>` — check environment-specific files (e.g., `--env production`)
+- `--strict` — fail on warnings (empty values, unused keys)
+
+### `dotlyte diff`
+
+Compare configuration between environments.
+
+```bash
+dotlyte diff --env development --env production
+```
+
+```
+Key                  development     production
+─────────────────────────────────────────────────
+DEBUG                true            false
+DATABASE_URL         localhost:5432  prod-db:5432
+LOG_LEVEL            debug           warn
+API_KEY              dev-key-***     prod-key-***
+CACHE_TTL            60              3600
+```
+
+Options:
+- `--env <name>` — specify environments to compare (use twice)
+- `--mask` — mask sensitive values (default: on)
+- `--format <json|table>` — output format
+
+### `dotlyte generate-types`
+
+Generate type definitions from your current configuration.
+
+```bash
+dotlyte generate-types --output config.d.ts
+```
+
+Generates TypeScript definitions, Python TypedDict stubs, Go structs, or equivalent type definitions for your language.
+
+Options:
+- `--output <file>` — output file path
+- `--format <ts|python|go|rust>` — target language (auto-detected)
+
+### `dotlyte encrypt`
+
+Encrypt sensitive values in `.env` files.
+
+```bash
+dotlyte encrypt .env --keys API_KEY,DATABASE_URL
+```
+
+```
+Encrypted 2 values in .env
+  API_KEY=ENC[AES256:base64data...]
+  DATABASE_URL=ENC[AES256:base64data...]
+```
+
+Options:
+- `--keys <key1,key2>` — specific keys to encrypt (default: all marked sensitive)
+- `--key-file <path>` — encryption key file
+- `--algorithm <aes256>` — encryption algorithm
+
+### `dotlyte doctor`
+
+Diagnose configuration issues in your project.
+
+```bash
+dotlyte doctor
+```
+
+```
+DOTLYTE Doctor
+══════════════
+
+✓ .env file found
+✓ config.yaml found
+✓ All required keys present
+⚠ .env.local is gitignored (good!)
+⚠ DATABASE_URL uses localhost — is this intentional for production?
+✗ API_KEY is empty — set it or add a default
+✓ No duplicate keys detected
+✓ All file parsers available (yaml, toml, json)
+
+3 passed, 2 warnings, 1 error
+```
+
+### `dotlyte init`
+
+Initialize DOTLYTE in a new project.
+
+```bash
+dotlyte init
+```
+
+```
+Creating .env with common defaults...
+Creating config.yaml template...
+Adding .env.local to .gitignore...
+Done! Run 'dotlyte doctor' to verify your setup.
+```
+
+Options:
+- `--template <web|api|worker>` — project template
+- `--with-schema` — generate a TypedConfig schema file
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Validation errors found |
+| `2` | File not found or parse error |
+| `3` | Encryption/decryption failure |
+
+## CI Integration
+
+Use `dotlyte check` in your CI pipeline to catch config issues early:
+
+```yaml
+# .github/workflows/config-check.yml
+- name: Validate config
+  run: dotlyte check --strict --env production
+```

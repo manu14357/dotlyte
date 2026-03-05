@@ -13,7 +13,7 @@ dotnet add package Dotlyte
 Or in your `.csproj`:
 
 ```xml
-<PackageReference Include="Dotlyte" Version="0.1.1" />
+<PackageReference Include="Dotlyte" Version="0.1.2" />
 ```
 
 ### Requirements
@@ -433,4 +433,61 @@ dotnet test
 
 # Format check
 dotnet format --verify-no-changes
+```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```csharp
+using Dotlyte;
+
+var config = TypedConfig.Create(new Dictionary<string, FieldDescriptor>
+{
+    ["PORT"] = new() { Type = "integer", Required = true, Min = 1, Max = 65535 },
+    ["DEBUG"] = new() { Type = "boolean", Default = false },
+    ["LOG_LEVEL"] = new() { Type = "string", Enum = ["debug", "info", "warn", "error"] },
+});
+```
+
+### Boundary Config
+
+```csharp
+using Dotlyte;
+
+var config = BoundaryConfig.Create(
+    serverKeys: ["DATABASE_URL", "API_SECRET"],
+    clientKeys: ["APP_NAME", "THEME"]
+);
+
+var server = config.Server();
+var client = config.Client(); // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```csharp
+using Dotlyte;
+
+var enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+var encrypted = enc.Encrypt("secret");
+var decrypted = enc.Decrypt(encrypted);
+
+var masking = new Masking(["API_KEY"]);
+var result = masking.Mask(configDict);
+```
+
+### Workspace & CLI
+
+```csharp
+using Dotlyte;
+
+var ws = Workspace.Detect();
+var config = ws.LoadPackage("api");
+```
+
+```bash
+dotlyte check          # Validate config files
+dotlyte diff --env dev --env prod  # Compare environments
+dotlyte doctor         # Diagnose issues
 ```
