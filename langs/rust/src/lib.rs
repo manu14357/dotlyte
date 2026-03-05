@@ -21,6 +21,7 @@
 //! let host: &str = config.get_str("database.host").unwrap_or("localhost");
 //! ```
 
+pub mod boundaries;
 mod coercion;
 mod config;
 pub mod encryption;
@@ -30,8 +31,10 @@ mod loader;
 pub mod masking;
 mod merger;
 mod parsers;
+pub mod typed;
 pub mod validator;
 pub mod watcher;
+pub mod workspace;
 
 pub use crate::coercion::{coerce, coerce_object, coerce_str};
 pub use crate::config::{Config, FromValue};
@@ -46,4 +49,9 @@ pub use crate::validator::{
     apply_schema_defaults, assert_valid, get_sensitive_keys, validate_schema, DotlyteSchema,
     SchemaRule,
 };
+pub use crate::boundaries::BoundaryConfig;
+pub use crate::typed::{create_typed_config, FieldDescriptor, FieldType, TypedConfigOptions};
 pub use crate::watcher::{ChangeEvent, ConfigWatcher};
+pub use crate::workspace::{
+    find_monorepo_root, get_shared_env, load_workspace, MonorepoInfo, WorkspaceOptions,
+};

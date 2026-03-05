@@ -259,3 +259,140 @@ pub fn derive_key(_passphrase: &str, _salt: &[u8]) -> crate::Result<Vec<u8>> {
         message: "encryption feature not enabled".to_string(),
     })
 }
+
+// ── v0.1.2 additions ────────────────────────────────────────────
+
+/// Rotate encryption keys: re-encrypt all values from `old_key` to `new_key`.
+///
+/// Values that are not encrypted (`ENC[...]`) are passed through unchanged.
+///
+/// # Errors
+///
+/// Returns a [`DotlyteError::DecryptionError`] if decryption with the old key
+/// or re-encryption with the new key fails.
+#[cfg(feature = "encryption")]
+pub fn rotate_keys(
+    data: &HashMap<String, String>,
+    old_key: &[u8],
+    new_key: &[u8],
+) -> crate::Result<HashMap<String, String>> {
+    let old_hex = hex::encode(old_key);
+    let new_hex = hex::encode(new_key);
+
+    let mut result = HashMap::with_capacity(data.len());
+    for (k, v) in data {
+        if is_encrypted(v) {
+            let plaintext = decrypt_value(v, &old_hex)?;
+            let re_encrypted = encrypt_value(&plaintext, &new_hex)?;
+            result.insert(k.clone(), re_encrypted);
+        } else {
+            result.insert(k.clone(), v.clone());
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(not(feature = "encryption"))]
+pub fn rotate_keys(
+    _data: &HashMap<String, String>,
+    _old_key: &[u8],
+    _new_key: &[u8],
+) -> crate::Result<HashMap<String, String>> {
+    Err(DotlyteError::DecryptionError {
+        message: "encryption feature not enabled".to_string(),
+    })
+}
+
+/// Try decrypting `encrypted_value` with each key in `keys`, returning the
+/// first key that succeeds. Returns `None` if no key works.
+#[cfg(feature = "encryption")]
+pub fn resolve_key_with_fallback(keys: &[Vec<u8>], encrypted_value: &str) -> Option<Vec<u8>> {
+    for key in keys {
+        let key_hex = hex::encode(key);
+        if decrypt_value(encrypted_value, &key_hex).is_ok() {
+            return Some(key.clone());
+        }
+    }
+    None
+}
+
+#[cfg(not(feature = "encryption"))]
+pub fn resolve_key_with_fallback(_keys: &[Vec<u8>], _encrypted_value: &str) -> Option<Vec<u8>> {
+    None
+}
+
+/// Encrypt selected values in a vault-style map.
+///
+/// When `sensitive_keys` is `Some`, only those keys are encrypted.
+/// When `None`, all values are encrypted.
+///
+/// # Errors
+///
+/// Returns a [`DotlyteError::DecryptionError`] if encryption fails.
+#[cfg(feature = "encryption")]
+pub fn encrypt_vault(
+    data: &HashMap<String, String>,
+    key: &[u8],
+    sensitive_keys: Option<&std::collections::HashSet<String>>,
+) -> crate::Result<HashMap<String, String>> {
+    let key_hex = hex::encode(key);
+    let mut result = HashMap::with_capacity(data.len());
+
+    for (k, v) in data {
+        let should_encrypt = match sensitive_keys {
+            Some(set) => set.contains(k),
+            None => true,
+        };
+        if should_encrypt && !is_encrypted(v) {
+            result.insert(k.clone(), encrypt_value(v, &key_hex)?);
+        } else {
+            result.insert(k.clone(), v.clone());
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(not(feature = "encryption"))]
+pub fn encrypt_vault(
+    _data: &HashMap<String, String>,
+    _key: &[u8],
+    _sensitive_keys: Option<&std::collections::HashSet<String>>,
+) -> crate::Result<HashMap<String, String>> {
+    Err(DotlyteError::DecryptionError {
+        message: "encryption feature not enabled".to_string(),
+    })
+}
+
+/// Decrypt all `ENC[...]` values in a vault-style map, returning the
+/// plaintext map.
+///
+/// # Errors
+///
+/// Returns a [`DotlyteError::DecryptionError`] if decryption fails.
+#[cfg(feature = "encryption")]
+pub fn decrypt_vault(
+    data: &HashMap<String, String>,
+    key: &[u8],
+) -> crate::Result<HashMap<String, String>> {
+    let key_hex = hex::encode(key);
+    let mut result = HashMap::with_capacity(data.len());
+
+    for (k, v) in data {
+        if is_encrypted(v) {
+            result.insert(k.clone(), decrypt_value(v, &key_hex)?);
+        } else {
+            result.insert(k.clone(), v.clone());
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(not(feature = "encryption"))]
+pub fn decrypt_vault(
+    _data: &HashMap<String, String>,
+    _key: &[u8],
+) -> crate::Result<HashMap<String, String>> {
+    Err(DotlyteError::DecryptionError {
+        message: "encryption feature not enabled".to_string(),
+    })
+}

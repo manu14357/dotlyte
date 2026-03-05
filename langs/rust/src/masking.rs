@@ -108,3 +108,104 @@ fn flatten_keys(data: &serde_json::Map<String, Value>, prefix: &str) -> Vec<Stri
     }
     keys
 }
+
+// ── v0.1.2 additions ────────────────────────────────────────────
+
+/// Compile a list of glob/regex pattern strings into [`Regex`] objects.
+///
+/// # Errors
+///
+/// Returns [`DotlyteError::ValidationError`] if any pattern fails to compile.
+pub fn compile_patterns(patterns: &[String]) -> Result<Vec<Regex>, crate::errors::DotlyteError> {
+    let mut compiled = Vec::with_capacity(patterns.len());
+    for pattern in patterns {
+        let re = Regex::new(pattern).map_err(|e| crate::errors::DotlyteError::ValidationError {
+            violations: vec![crate::errors::SchemaViolation {
+                key: pattern.clone(),
+                message: format!("invalid regex pattern: {e}"),
+                rule: "pattern".to_string(),
+            }],
+        })?;
+        compiled.push(re);
+    }
+    Ok(compiled)
+}
+
+/// Build a set of sensitive key names by combining explicit keys, pattern
+/// matches against all available keys, and schema-declared sensitive keys.
+///
+/// # Errors
+///
+/// Returns an error if any pattern in `patterns` fails to compile.
+pub fn build_sensitive_set_with_patterns(
+    keys: &[String],
+    patterns: &[String],
+    schema_sensitive: &HashSet<String>,
+) -> Result<HashSet<String>, crate::errors::DotlyteError> {
+    let mut set: HashSet<String> = schema_sensitive.clone();
+
+    let compiled = compile_patterns(patterns)?;
+    for key in keys {
+        for re in &compiled {
+            if re.is_match(key) {
+                set.insert(key.clone());
+                break;
+            }
+        }
+    }
+
+    Ok(set)
+}
+
+/// Check whether a key is in the sensitive set.
+///
+/// This is a simple lookup utility — Rust does not have runtime proxies,
+/// so callers can use this to implement their own access tracking.
+pub fn check_sensitive_access(key: &str, sensitive_keys: &HashSet<String>) -> bool {
+    sensitive_keys.contains(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compile_patterns() {
+        let patterns = vec!["(?i)password".to_string(), "(?i)secret".to_string()];
+        let compiled = compile_patterns(&patterns).unwrap();
+        assert_eq!(compiled.len(), 2);
+        assert!(compiled[0].is_match("my_password"));
+        assert!(compiled[1].is_match("SECRET_TOKEN"));
+    }
+
+    #[test]
+    fn test_compile_invalid_pattern() {
+        let patterns = vec!["[invalid".to_string()];
+        assert!(compile_patterns(&patterns).is_err());
+    }
+
+    #[test]
+    fn test_build_sensitive_set_with_patterns() {
+        let keys = vec![
+            "database_password".to_string(),
+            "api_key".to_string(),
+            "port".to_string(),
+            "host".to_string(),
+        ];
+        let patterns = vec!["(?i)password".to_string(), "(?i)key".to_string()];
+        let schema: HashSet<String> = HashSet::new();
+
+        let result = build_sensitive_set_with_patterns(&keys, &patterns, &schema).unwrap();
+        assert!(result.contains("database_password"));
+        assert!(result.contains("api_key"));
+        assert!(!result.contains("port"));
+    }
+
+    #[test]
+    fn test_check_sensitive_access() {
+        let mut set = HashSet::new();
+        set.insert("secret".to_string());
+        assert!(check_sensitive_access("secret", &set));
+        assert!(!check_sensitive_access("public", &set));
+    }
+}
