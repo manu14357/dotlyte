@@ -16,4 +16,18 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   outDir: "dist",
+  /**
+   * CJS/ESM compatibility shim.
+   * - CJS already has `require` natively, so no banner needed.
+   * - ESM needs `require` created via `createRequire(import.meta.url)`
+   *   for optional dependency loading (yaml, smol-toml).
+   */
+  banner(ctx) {
+    if (ctx.format === "esm") {
+      return {
+        js: `import{createRequire as __cr}from"module";const require=__cr(import.meta.url);`,
+      };
+    }
+    return {};
+  },
 });
