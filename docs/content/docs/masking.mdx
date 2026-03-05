@@ -1,0 +1,219 @@
+---
+title: Masking
+description: Mask sensitive config values in logs, errors, and debug output.
+icon: EyeOff
+---
+
+**Enhanced Masking** automatically redacts sensitive configuration values in logs, error messages, and debug output. Supports custom patterns, audit logging, and configurable mask formats. Available in all 8 languages since v0.1.2.
+
+## Basic Masking
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import Masking
+
+    masking = Masking(keys=["API_KEY", "DATABASE_URL"])
+
+    result = masking.mask({
+        "APP_NAME": "MyApp",
+        "API_KEY": "sk-12345678",
+        "DATABASE_URL": "postgres://user:pass@host/db",
+    })
+
+    # result:
+    # {
+    #     "APP_NAME": "MyApp",
+    #     "API_KEY": "sk-****5678",
+    #     "DATABASE_URL": "post****t/db",
+    # }
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { Masking } from "dotlyte";
+
+    const masking = new Masking({ keys: ["API_KEY", "DATABASE_URL"] });
+
+    const result = masking.mask({
+      APP_NAME: "MyApp",
+      API_KEY: "sk-12345678",
+      DATABASE_URL: "postgres://user:pass@host/db",
+    });
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    m := dotlyte.NewMasking([]string{"API_KEY", "DATABASE_URL"})
+
+    result := m.Mask(map[string]string{
+        "APP_NAME": "MyApp",
+        "API_KEY":  "sk-12345678",
+    })
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::masking::Masking;
+
+    let m = Masking::new(&["API_KEY", "DATABASE_URL"]);
+
+    let result = m.mask(&config_map);
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    import dev.dotlyte.Masking;
+
+    var masking = new Masking(List.of("API_KEY", "DATABASE_URL"));
+    var result = masking.mask(configMap);
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    masking = Dotlyte::Masking.new(keys: ["API_KEY", "DATABASE_URL"])
+    result = masking.mask(config_hash)
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\Masking;
+
+    $masking = new Masking(keys: ['API_KEY', 'DATABASE_URL']);
+    $result = $masking->mask($configArray);
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    using Dotlyte;
+
+    var masking = new Masking(["API_KEY", "DATABASE_URL"]);
+    var result = masking.Mask(configDict);
+    ```
+  </Tab>
+</Tabs>
+
+## Custom Patterns
+
+Define regex patterns to automatically detect and mask sensitive values, even if you don't know the key names:
+
+```python
+from dotlyte import Masking
+
+masking = Masking(
+    keys=["API_KEY"],
+    patterns=[
+        r"sk-[a-zA-Z0-9]+",               # Stripe-style keys
+        r"postgres://[^@]+@",              # Database connection strings
+        r"eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+",  # JWT tokens
+    ],
+)
+
+result = masking.mask({
+    "TOKEN": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+    "STRIPE_KEY": "sk-live-abc123def456",
+})
+
+# TOKEN and STRIPE_KEY are both masked, even though only API_KEY was listed
+```
+
+## Audit Logging
+
+Track every time a sensitive value is accessed:
+
+```python
+from dotlyte import Masking, AuditProxy
+
+accessed_log = []
+
+config = load()
+proxy = AuditProxy(
+    config,
+    sensitive_keys=["API_KEY", "DATABASE_URL"],
+    on_access=lambda key, timestamp: accessed_log.append({
+        "key": key,
+        "time": timestamp,
+    }),
+)
+
+proxy.get("API_KEY")     # Triggers audit callback
+proxy.get("APP_NAME")   # No callback (not sensitive)
+
+print(accessed_log)
+# [{"key": "API_KEY", "time": "2025-03-06T20:03:00Z"}]
+```
+
+### JavaScript Audit Example
+
+```typescript
+import { createAuditProxy } from "dotlyte/masking";
+
+const proxy = createAuditProxy(config, {
+  sensitiveKeys: ["API_KEY", "DB_PASS"],
+  onAccess: (key, timestamp) => {
+    logger.info(`Secret accessed: ${key} at ${timestamp}`);
+  },
+});
+```
+
+## Mask Formats
+
+Customize how values are masked:
+
+| Format | Input | Output |
+|--------|-------|--------|
+| `partial` (default) | `sk-12345678` | `sk-****5678` |
+| `full` | `sk-12345678` | `****` |
+| `hash` | `sk-12345678` | `sha256:a1b2c3...` |
+| `length` | `sk-12345678` | `[12 chars]` |
+
+```python
+masking = Masking(
+    keys=["API_KEY"],
+    format="full",  # or "partial", "hash", "length"
+)
+```
+
+## Integration with Logging
+
+### Python + structlog
+
+```python
+import structlog
+from dotlyte import Masking
+
+masking = Masking(keys=["API_KEY", "DB_PASS"])
+
+def mask_processor(logger, method_name, event_dict):
+    return masking.mask(event_dict)
+
+structlog.configure(processors=[mask_processor, structlog.dev.ConsoleRenderer()])
+```
+
+### JavaScript + Pino
+
+```typescript
+import pino from "pino";
+import { Masking } from "dotlyte";
+
+const masking = new Masking({ keys: ["API_KEY", "DB_PASS"] });
+
+const logger = pino({
+  formatters: {
+    log(object) {
+      return masking.mask(object);
+    },
+  },
+});
+```
+
+## Full vs Partial Masking
+
+By default, masking preserves a few characters to help with debugging:
+
+```
+sk-12345678     → sk-****5678     (first 3 + last 4 visible)
+short           → ****             (values < 8 chars are fully masked)
+```
+
+For maximum security, use `format="full"` to replace everything with `****`.

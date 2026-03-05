@@ -417,3 +417,63 @@ pnpm lint
 # Type check
 pnpm typecheck
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```typescript
+import { createTypedConfig } from "dotlyte/typed";
+
+const config = createTypedConfig({
+  PORT: { type: "integer", required: true, min: 1, max: 65535 },
+  DEBUG: { type: "boolean", default: false },
+  LOG_LEVEL: { type: "string", enum: ["debug", "info", "warn", "error"] },
+  API_KEY: { type: "string", required: true, sensitive: true },
+});
+```
+
+### Boundary Config
+
+```typescript
+import { createBoundaryConfig } from "dotlyte/boundary";
+
+const config = createBoundaryConfig({
+  serverKeys: ["DATABASE_URL", "API_SECRET"],
+  clientKeys: ["APP_NAME", "THEME"],
+});
+
+const server = config.server();
+const client = config.client(); // Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```typescript
+import { Encryption, Masking } from "dotlyte";
+
+// Key rotation
+const enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+const encrypted = enc.encrypt("secret");
+
+// Pattern-based masking with audit
+const masking = new Masking({
+  keys: ["API_KEY"],
+  patterns: [/sk-[a-zA-Z0-9]+/],
+});
+```
+
+### Workspace & CLI
+
+```typescript
+import { Workspace } from "dotlyte/workspace";
+
+const ws = Workspace.detect();
+const config = ws.loadPackage("api");
+```
+
+```bash
+npx dotlyte check          # Validate config files
+npx dotlyte diff --env dev --env prod  # Compare environments
+npx dotlyte doctor         # Diagnose issues
+```

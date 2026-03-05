@@ -375,3 +375,61 @@ pytest -x                           # Stop on first failure
 ruff check . && ruff format --check . # Lint
 mypy src/                           # Type check
 ```
+
+## What's New in v0.1.2
+
+### Typed Config
+
+```python
+from dotlyte import TypedConfig
+
+config = TypedConfig.create({
+    "PORT": {"type": "integer", "required": True, "min": 1, "max": 65535},
+    "DEBUG": {"type": "boolean", "default": False},
+    "LOG_LEVEL": {"type": "string", "enum": ["debug", "info", "warn", "error"]},
+    "API_KEY": {"type": "string", "required": True, "sensitive": True},
+})
+```
+
+### Boundary Config
+
+```python
+from dotlyte import BoundaryConfig
+
+config = BoundaryConfig.create(
+    server_keys=["DATABASE_URL", "API_SECRET"],
+    client_keys=["APP_NAME", "THEME"],
+)
+
+server = config.server()
+client = config.client()  # Cannot access server keys
+```
+
+### Enhanced Encryption & Masking
+
+```python
+from dotlyte import Encryption, Masking
+
+# Key rotation
+enc = Encryption("my-secret-key-32-chars-long!!!!!")
+encrypted = enc.encrypt("secret")
+decrypted = enc.decrypt(encrypted)
+
+# Pattern-based masking with audit
+masking = Masking(keys=["API_KEY"], patterns=[r"sk-[a-zA-Z0-9]+"])
+```
+
+### Workspace & CLI
+
+```python
+from dotlyte import Workspace
+
+ws = Workspace.detect()
+config = ws.load_package("api")
+```
+
+```bash
+dotlyte check          # Validate config files
+dotlyte diff --env dev --env prod  # Compare environments
+dotlyte doctor         # Diagnose issues
+```

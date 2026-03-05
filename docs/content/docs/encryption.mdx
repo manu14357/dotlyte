@@ -1,0 +1,226 @@
+---
+title: Encryption
+description: Encrypt sensitive config values with key rotation and vault integration.
+icon: KeyRound
+---
+
+**Enhanced Encryption** lets you encrypt sensitive values in config files, rotate encryption keys without downtime, and integrate with secret vaults. Available in all 8 languages since v0.1.2.
+
+## Basic Encryption
+
+Encrypt and decrypt config values using AES-256:
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import Encryption
+
+    enc = Encryption("my-secret-key-32-chars-long!!!!!")
+
+    encrypted = enc.encrypt("super-secret-api-key")
+    # "ENC[AES256:base64data...]"
+
+    decrypted = enc.decrypt(encrypted)
+    # "super-secret-api-key"
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { Encryption } from "dotlyte";
+
+    const enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+
+    const encrypted = enc.encrypt("super-secret-api-key");
+    const decrypted = enc.decrypt(encrypted);
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    enc, err := dotlyte.NewEncryption("my-secret-key-32-chars-long!!!!!")
+
+    encrypted, err := enc.Encrypt("super-secret-api-key")
+    decrypted, err := enc.Decrypt(encrypted)
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::encryption::Encryption;
+
+    let enc = Encryption::new("my-secret-key-32-chars-long!!!!!")?;
+
+    let encrypted = enc.encrypt("super-secret-api-key")?;
+    let decrypted = enc.decrypt(&encrypted)?;
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    import dev.dotlyte.Encryption;
+
+    var enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+
+    String encrypted = enc.encrypt("super-secret-api-key");
+    String decrypted = enc.decrypt(encrypted);
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    enc = Dotlyte::Encryption.new("my-secret-key-32-chars-long!!!!!")
+
+    encrypted = enc.encrypt("super-secret-api-key")
+    decrypted = enc.decrypt(encrypted)
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\Encryption;
+
+    $enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+
+    $encrypted = $enc->encrypt("super-secret-api-key");
+    $decrypted = $enc->decrypt($encrypted);
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    using Dotlyte;
+
+    var enc = new Encryption("my-secret-key-32-chars-long!!!!!");
+
+    var encrypted = enc.Encrypt("super-secret-api-key");
+    var decrypted = enc.Decrypt(encrypted);
+    ```
+  </Tab>
+</Tabs>
+
+## Key Rotation
+
+Rotate encryption keys without downtime by re-encrypting all values with a new key:
+
+```python
+from dotlyte import Encryption
+
+old_enc = Encryption("old-key-32-chars-long!!!!!!!!!!!!")
+new_enc = Encryption("new-key-32-chars-long!!!!!!!!!!!!")
+
+# Re-encrypt a value
+old_encrypted = "ENC[AES256:old-base64data...]"
+plaintext = old_enc.decrypt(old_encrypted)
+new_encrypted = new_enc.encrypt(plaintext)
+```
+
+### Bulk Key Rotation
+
+Use the `rotate_keys` helper to re-encrypt all values at once:
+
+<Tabs items={["Python", "JavaScript", "Go"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import Encryption
+
+    old_enc = Encryption("old-key")
+    new_enc = Encryption("new-key")
+
+    rotated = Encryption.rotate_keys(
+        {"API_KEY": "ENC[...]", "DB_PASS": "ENC[...]"},
+        old_key=old_enc,
+        new_key=new_enc,
+    )
+    # {"API_KEY": "ENC[new...]", "DB_PASS": "ENC[new...]"}
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { Encryption } from "dotlyte";
+
+    const rotated = Encryption.rotateKeys(
+      { API_KEY: "ENC[...]", DB_PASS: "ENC[...]" },
+      oldEnc,
+      newEnc,
+    );
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    rotated, err := dotlyte.RotateKeys(
+        map[string]string{"API_KEY": "ENC[...]", "DB_PASS": "ENC[...]"},
+        oldEnc,
+        newEnc,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Vault Integration
+
+Connect to external secret managers for production environments:
+
+<Tabs items={["Python", "JavaScript"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import Encryption
+
+    # Create a vault-backed encryption provider
+    enc = Encryption.from_vault(
+        provider="aws",          # "aws", "gcp", "azure", "hashicorp"
+        key_id="alias/my-key",
+        region="us-east-1",
+    )
+
+    # Encrypt/decrypt using KMS — keys never leave the vault
+    encrypted = enc.encrypt("secret-value")
+    decrypted = enc.decrypt(encrypted)
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { Encryption } from "dotlyte";
+
+    const enc = Encryption.fromVault({
+      provider: "aws",
+      keyId: "alias/my-key",
+      region: "us-east-1",
+    });
+    ```
+  </Tab>
+</Tabs>
+
+### Supported Vault Providers
+
+| Provider | Key | Description |
+|----------|-----|-------------|
+| `aws` | AWS KMS | AWS Key Management Service |
+| `gcp` | GCP KMS | Google Cloud Key Management |
+| `azure` | Azure Key Vault | Azure Key Vault |
+| `hashicorp` | HashiCorp Vault | HashiCorp Vault Transit engine |
+
+<Callout type="info">
+  Vault integration requires the corresponding cloud SDK to be installed. DOTLYTE will raise a helpful error if the SDK is missing.
+</Callout>
+
+## Encrypted `.env` Files
+
+Store encrypted values directly in `.env` files. DOTLYTE auto-detects and decrypts them:
+
+```bash
+# .env
+APP_NAME=MyApp
+API_KEY=ENC[AES256:SGVsbG8gV29ybGQ=]
+DATABASE_URL=ENC[AES256:c2VjcmV0LXVybA==]
+```
+
+```python
+from dotlyte import load
+
+# Provide decryption key via DOTLYTE_ENCRYPTION_KEY env var
+# or pass it explicitly:
+config = load(encryption_key="my-secret-key-32-chars-long!!!!!")
+config.get("API_KEY")  # Automatically decrypted
+```
+
+## Security Notes
+
+- Encryption uses **AES-256-GCM** (authenticated encryption)
+- Each encrypted value includes a unique nonce/IV
+- The `ENC[...]` format is self-describing and portable
+- Never commit unencrypted secrets — use `dotlyte encrypt` CLI command
+- Key rotation should be performed regularly (recommended: quarterly)

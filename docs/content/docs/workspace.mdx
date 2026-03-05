@@ -1,0 +1,194 @@
+---
+title: Workspace & Monorepo
+description: Automatic monorepo detection and per-package config loading.
+icon: FolderTree
+---
+
+**Workspace** provides automatic monorepo detection and context-aware configuration loading. It finds your root config files, discovers packages/services, and loads configs in the right order. Available in all 8 languages since v0.1.2.
+
+## Overview
+
+In a monorepo, config files live at multiple levels:
+
+```
+my-monorepo/
+├── .env                    ← root config
+├── config.yaml             ← root config
+├── packages/
+│   ├── api/
+│   │   ├── .env            ← package-specific
+│   │   └── config.yaml
+│   ├── web/
+│   │   ├── .env
+│   │   └── config.yaml
+│   └── shared/
+│       └── config.yaml
+```
+
+Workspace detects this structure and loads the right config based on where your code runs.
+
+## Usage
+
+<Tabs items={["Python", "JavaScript", "Go", "Rust", "Java", "Ruby", "PHP", "C#"]}>
+  <Tab value="Python">
+    ```python
+    from dotlyte import Workspace
+
+    ws = Workspace.detect()
+
+    ws.root          # "/path/to/my-monorepo"
+    ws.packages      # ["api", "web", "shared"]
+
+    # Load config for a specific package (root + package merged)
+    config = ws.load_package("api")
+    config.get("DATABASE_URL")  # From packages/api/.env
+    config.get("LOG_LEVEL")     # Falls back to root config.yaml
+    ```
+  </Tab>
+  <Tab value="JavaScript">
+    ```typescript
+    import { Workspace } from "dotlyte/workspace";
+
+    const ws = Workspace.detect();
+
+    ws.root;       // "/path/to/my-monorepo"
+    ws.packages;   // ["api", "web", "shared"]
+
+    const config = ws.loadPackage("api");
+    config.get("DATABASE_URL");
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    ws, err := dotlyte.DetectWorkspace()
+
+    ws.Root      // "/path/to/my-monorepo"
+    ws.Packages  // ["api", "web", "shared"]
+
+    config, err := ws.LoadPackage("api")
+    val, _ := config.Get("DATABASE_URL")
+    ```
+  </Tab>
+  <Tab value="Rust">
+    ```rust
+    use dotlyte::workspace::Workspace;
+
+    let ws = Workspace::detect()?;
+
+    ws.root();       // "/path/to/my-monorepo"
+    ws.packages();   // ["api", "web", "shared"]
+
+    let config = ws.load_package("api")?;
+    ```
+  </Tab>
+  <Tab value="Java">
+    ```java
+    import dev.dotlyte.Workspace;
+
+    var ws = Workspace.detect();
+
+    ws.getRoot();       // "/path/to/my-monorepo"
+    ws.getPackages();   // ["api", "web", "shared"]
+
+    var config = ws.loadPackage("api");
+    ```
+  </Tab>
+  <Tab value="Ruby">
+    ```ruby
+    ws = Dotlyte::Workspace.detect
+
+    ws.root       # "/path/to/my-monorepo"
+    ws.packages   # ["api", "web", "shared"]
+
+    config = ws.load_package("api")
+    ```
+  </Tab>
+  <Tab value="PHP">
+    ```php
+    use Dotlyte\Workspace;
+
+    $ws = Workspace::detect();
+
+    $ws->root();       // "/path/to/my-monorepo"
+    $ws->packages();   // ["api", "web", "shared"]
+
+    $config = $ws->loadPackage("api");
+    ```
+  </Tab>
+  <Tab value="C#">
+    ```csharp
+    using Dotlyte;
+
+    var ws = Workspace.Detect();
+
+    ws.Root;       // "/path/to/my-monorepo"
+    ws.Packages;   // ["api", "web", "shared"]
+
+    var config = ws.LoadPackage("api");
+    ```
+  </Tab>
+</Tabs>
+
+## Monorepo Detection
+
+Workspace auto-detects your monorepo by looking for workspace marker files, walking up from the current directory:
+
+| Ecosystem | Marker File | Package Directory Key |
+|-----------|------------|----------------------|
+| Node.js (pnpm) | `pnpm-workspace.yaml` | `packages` array |
+| Node.js (npm/yarn) | `package.json` | `workspaces` field |
+| Python | `pyproject.toml` | `[tool.hatch.build]` or custom |
+| Rust | `Cargo.toml` | `[workspace.members]` |
+| Go | `go.work` | `use` directives |
+| Java | `settings.gradle.kts` | `include()` calls |
+| .NET | `*.sln` | Project references |
+| Generic | `.dotlyte-workspace` | Custom YAML config |
+
+## Config Merge Order
+
+When loading config for a specific package, files are merged in this order (later wins):
+
+1. Root defaults
+2. Root `.env` / `config.yaml` / `config.json`
+3. Package `.env` / `config.yaml` / `config.json`
+4. Environment variables
+
+This means package configs can override root configs, and environment variables always win.
+
+## API
+
+### `Workspace.detect(path?)`
+
+Detect a workspace starting from `path` (defaults to current working directory). Walks up the directory tree looking for workspace marker files.
+
+Returns a `Workspace` object, or throws `DotlyteError` if no workspace is found.
+
+### `ws.root`
+
+The absolute path to the workspace root directory.
+
+### `ws.packages`
+
+A list of discovered package/service names.
+
+### `ws.load_package(name, options?)`
+
+Load configuration for a specific package, merging root and package-level config.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | `string` | Package name (must be in `ws.packages`) |
+| `options` | `LoadOptions` | Optional: additional load options |
+
+## Custom Workspace File
+
+For non-standard layouts, create a `.dotlyte-workspace` file at the repo root:
+
+```yaml
+packages:
+  - services/api
+  - services/worker
+  - libs/shared
+```
+
+This tells DOTLYTE exactly where your packages live.
