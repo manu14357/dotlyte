@@ -161,6 +161,109 @@ public final class Encryption {
         return null;
     }
 
+    // ── Key rotation ────────────────────────────────────────────
+
+    /**
+     * Re-encrypt every value in {@code data} from {@code oldKey} to {@code newKey}.
+     *
+     * @param data   map of key → encrypted value
+     * @param oldKey the previous hex-encoded 256-bit key
+     * @param newKey the new hex-encoded 256-bit key
+     * @return a new map with all values re-encrypted under {@code newKey}
+     * @throws DotlyteException if decryption or re-encryption fails
+     */
+    public static Map<String, String> rotateKeys(
+            final Map<String, String> data,
+            final String oldKey,
+            final String newKey) {
+
+        final Map<String, String> result = new java.util.LinkedHashMap<>();
+        for (final Map.Entry<String, String> entry : data.entrySet()) {
+            if (isEncrypted(entry.getValue())) {
+                final String plaintext = decryptValue(entry.getValue(), oldKey);
+                result.put(entry.getKey(), encryptValue(plaintext, newKey));
+            } else {
+                result.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Try each key in {@code keys} to decrypt {@code encryptedValue} and return
+     * the key that succeeds.
+     *
+     * @param keys           candidate hex-encoded keys
+     * @param encryptedValue the encrypted SOPS-style value
+     * @return the working hex key, or {@code null} if none succeed
+     */
+    public static String resolveKeyWithFallback(
+            final java.util.List<String> keys,
+            final String encryptedValue) {
+
+        for (final String key : keys) {
+            try {
+                decryptValue(encryptedValue, key);
+                return key;
+            } catch (final DotlyteException ignored) {
+                // Try next key
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Encrypt sensitive keys in a configuration map, producing a "vault"
+     * of all-string encrypted values.
+     *
+     * @param data          the plain configuration values
+     * @param keyHex        hex-encoded 256-bit encryption key
+     * @param sensitiveKeys keys whose values should be encrypted
+     * @return a map with sensitive values encrypted and others converted to string
+     * @throws DotlyteException on encryption failure
+     */
+    public static Map<String, String> encryptVault(
+            final Map<String, Object> data,
+            final String keyHex,
+            final java.util.Set<String> sensitiveKeys) {
+
+        final Map<String, String> vault = new java.util.LinkedHashMap<>();
+        for (final Map.Entry<String, Object> entry : data.entrySet()) {
+            final String stringValue = entry.getValue() != null
+                    ? entry.getValue().toString() : "";
+            if (sensitiveKeys.contains(entry.getKey())) {
+                vault.put(entry.getKey(), encryptValue(stringValue, keyHex));
+            } else {
+                vault.put(entry.getKey(), stringValue);
+            }
+        }
+        return vault;
+    }
+
+    /**
+     * Decrypt a vault back into a configuration map, coercing values.
+     *
+     * @param data   the vault (all string values, some encrypted)
+     * @param keyHex hex-encoded 256-bit decryption key
+     * @return the decrypted/coerced configuration map
+     * @throws DotlyteException on decryption failure
+     */
+    public static Map<String, Object> decryptVault(
+            final Map<String, String> data,
+            final String keyHex) {
+
+        final Map<String, Object> result = new java.util.LinkedHashMap<>();
+        for (final Map.Entry<String, String> entry : data.entrySet()) {
+            if (isEncrypted(entry.getValue())) {
+                final String plaintext = decryptValue(entry.getValue(), keyHex);
+                result.put(entry.getKey(), Coercion.coerce(plaintext));
+            } else {
+                result.put(entry.getKey(), Coercion.coerce(entry.getValue()));
+            }
+        }
+        return result;
+    }
+
     // ── Hex util ────────────────────────────────────────────────
 
     private static String bytesToHex(byte[] bytes) {
